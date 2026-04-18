@@ -59,3 +59,18 @@ def parse_jsonl(path: str) -> list[Message]:
             messages.append(Message(role=role, content=content, raw=raw, index=idx))
             idx += 1
     return messages
+
+
+def find_last_user_index(messages: list[Message]) -> Optional[int]:
+    """Return index of last message with role='user', or None."""
+    for msg in reversed(messages):
+        if msg.role == "user":
+            return msg.index
+    return None
+
+
+def slice_in_flight(messages: list[Message], from_index: Optional[int]) -> list[Message]:
+    """Return messages[from_index:]. If from_index is None, return all."""
+    if from_index is None:
+        return list(messages)
+    return [m for m in messages if m.index >= from_index]

@@ -22,3 +22,33 @@ def test_parse_jsonl_returns_messages_in_order(copy_fixture):
 
 def test_parse_jsonl_missing_file_returns_empty(tmp_path):
     assert transcript.parse_jsonl(str(tmp_path / "nope.jsonl")) == []
+
+
+def _msg(role, content="x", index=0):
+    return transcript.Message(role=role, content=content, raw={}, index=index)
+
+
+def test_find_last_user_index_none_when_no_user():
+    messages = [_msg("assistant", index=0), _msg("tool", index=1)]
+    assert transcript.find_last_user_index(messages) is None
+
+
+def test_find_last_user_index_returns_latest_user():
+    messages = [
+        _msg("user", index=0),
+        _msg("assistant", index=1),
+        _msg("user", index=2),
+        _msg("assistant", index=3),
+    ]
+    assert transcript.find_last_user_index(messages) == 2
+
+
+def test_slice_in_flight_returns_tail():
+    messages = [_msg("user", index=i) for i in range(5)]
+    tail = transcript.slice_in_flight(messages, 3)
+    assert [m.index for m in tail] == [3, 4]
+
+
+def test_slice_in_flight_none_returns_all():
+    messages = [_msg("user", index=i) for i in range(3)]
+    assert transcript.slice_in_flight(messages, None) == messages
