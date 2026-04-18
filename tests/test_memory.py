@@ -105,3 +105,13 @@ def test_read_preferences_stops_at_next_h2(tmp_path):
     assert body is not None
     assert "- x" in body
     assert "should not leak" not in body
+
+
+def test_find_project_root_picks_nearest_claude(tmp_path):
+    outer = tmp_path / "outer"
+    (outer / ".claude").mkdir(parents=True)
+    inner = outer / "sub" / "inner"
+    (inner / ".claude").mkdir(parents=True)
+    deepest = inner / "src"
+    deepest.mkdir(parents=True)
+    assert memory.find_project_root(deepest) == inner
