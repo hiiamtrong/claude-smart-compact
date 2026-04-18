@@ -85,3 +85,20 @@ def test_compose_uses_placeholder_for_empty_active_task():
         existing_preferences_section=None,
     )
     assert "_(no active prompt)_" in md
+
+
+def test_compose_preserves_existing_preferences():
+    existing = "- always use pnpm\n- never mock DB"
+    md = core.compose_memory_markdown(
+        session_id="sid",
+        active_task_user_msg="task",
+        in_flight=[],
+        todos=[],
+        existing_preferences_section=existing,
+    )
+    prefs_start = md.index("## Preferences")
+    tail = md[prefs_start:]
+    assert "always use pnpm" in tail
+    assert "never mock DB" in tail
+    # Placeholder should NOT appear when existing prefs provided.
+    assert "never rewrite existing entries" not in tail
