@@ -1,0 +1,6 @@
+{"role":"user","content":"task A"}
+{"role":"assistant","content":"doing A"}
+{"role":"user","content":"task B"}
+{"role":"assistant","content":"doing B"}
+{"role":"user","content":"final: wrap up"}
+{"role":"assistant","content":"wrapping up"}

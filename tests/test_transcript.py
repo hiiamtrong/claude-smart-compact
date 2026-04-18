@@ -70,3 +70,23 @@ def test_extract_latest_todos_returns_most_recent_snapshot(copy_fixture):
     assert todos[0].status == "completed"
     assert todos[2].content == "add tests"
     assert todos[2].status == "in_progress"
+
+
+def test_parse_jsonl_skips_corrupt_lines(copy_fixture):
+    path = copy_fixture("transcript_corrupt_lines.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    assert [m.content for m in messages] == ["first", "second", "third"]
+
+
+def test_find_last_user_on_multi_user_transcript(copy_fixture):
+    path = copy_fixture("transcript_multi_user_turns.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    idx = transcript.find_last_user_index(messages)
+    assert idx is not None
+    assert messages[idx].content == "final: wrap up"
+
+
+def test_find_last_user_is_none_when_transcript_has_none(copy_fixture):
+    path = copy_fixture("transcript_no_user.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    assert transcript.find_last_user_index(messages) is None
