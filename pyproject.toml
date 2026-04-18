@@ -1,11 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "claude-smart-compact"
 version = "0.1.0"
-description = "Claude Code hooks that preserve memory across auto-compaction"
+description = "Claude Code hooks that preserve task state and user preferences across auto-compaction"
+readme = "README.md"
 requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "hiiamtrong", email = "hiiamtrong@users.noreply.github.com"}]
+keywords = ["claude", "claude-code", "hooks", "compaction", "anthropic"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/hiiamtrong/claude-smart-compact"
+Repository = "https://github.com/hiiamtrong/claude-smart-compact"
+Issues = "https://github.com/hiiamtrong/claude-smart-compact/issues"
+
+[project.scripts]
+claude-smart-compact = "claude_smart_compact.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "build>=1.0", "twine>=5.0"]
+
+[tool.setuptools]
+packages = ["claude_smart_compact", "claude_smart_compact.lib"]
+
+[tool.setuptools.package-data]
+claude_smart_compact = ["*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

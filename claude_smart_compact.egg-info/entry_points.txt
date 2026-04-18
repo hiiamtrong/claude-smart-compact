@@ -1,0 +1,2 @@
+[console_scripts]
+claude-smart-compact = claude_smart_compact.cli:main
