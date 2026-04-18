@@ -8,6 +8,8 @@ from typing import Literal, Optional
 
 Role = Literal["user", "assistant", "system", "tool"]
 
+VALID_ROLES = {"user", "assistant", "system", "tool"}
+
 
 @dataclass
 class Message:
@@ -39,7 +41,7 @@ def _flatten_content(raw_content) -> str:
 
 
 def parse_jsonl(path: str) -> list[Message]:
-    """Stream-read JSONL; skip corrupt lines; return ordered list."""
+    """Stream-read JSONL; skip corrupt lines and metadata; return ordered list."""
     p = Path(path)
     if not p.exists():
         return []
@@ -54,8 +56,29 @@ def parse_jsonl(path: str) -> list[Message]:
                 raw = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            role = raw.get("role", "assistant")
-            content = _flatten_content(raw.get("content", ""))
+            if not isinstance(raw, dict):
+                continue
+
+            # Real CLI format: role is nested in message.role
+            # Synthetic test format: role is at top level
+            msg_obj = raw.get("message") if isinstance(raw.get("message"), dict) else None
+            role = None
+            if msg_obj is not None:
+                role = msg_obj.get("role")
+            if role is None:
+                role = raw.get("role")
+
+            # Skip metadata lines that aren't real messages
+            if role not in VALID_ROLES:
+                continue
+
+            # Content: prefer nested, fall back to top-level
+            if msg_obj is not None and "content" in msg_obj:
+                raw_content = msg_obj.get("content")
+            else:
+                raw_content = raw.get("content", "")
+
+            content = _flatten_content(raw_content)
             messages.append(Message(role=role, content=content, raw=raw, index=idx))
             idx += 1
     return messages
@@ -76,21 +99,34 @@ def slice_in_flight(messages: list[Message], from_index: Optional[int]) -> list[
     return [m for m in messages if m.index >= from_index]
 
 
-def _iter_tool_uses(raw_content) -> list[dict]:
-    """Return every tool_use block found in an assistant content payload."""
-    if not isinstance(raw_content, list):
-        return []
-    return [b for b in raw_content if isinstance(b, dict) and b.get("type") == "tool_use"]
+def _message_content_blocks(msg: Message) -> list[dict]:
+    """Return list content blocks from a Message's raw payload (handles both formats)."""
+    raw = msg.raw
+    # Real CLI format: content is nested in message.content
+    if isinstance(raw.get("message"), dict):
+        content = raw["message"].get("content")
+        if isinstance(content, list):
+            return [b for b in content if isinstance(b, dict)]
+    # Synthetic test format: content is at top level
+    content = raw.get("content")
+    if isinstance(content, list):
+        return [b for b in content if isinstance(b, dict)]
+    return []
 
 
 def extract_latest_todos(messages: list[Message]) -> list[TodoItem]:
     """Find the most recent TodoWrite tool_use call and parse its todo list."""
     latest: list[TodoItem] = []
     for msg in messages:
-        for block in _iter_tool_uses(msg.raw.get("content", [])):
+        for block in _message_content_blocks(msg):
+            if block.get("type") != "tool_use":
+                continue
             if block.get("name") != "TodoWrite":
                 continue
-            todos_raw = block.get("input", {}).get("todos", [])
+            input_val = block.get("input", {})
+            if not isinstance(input_val, dict):
+                continue
+            todos_raw = input_val.get("todos", [])
             parsed: list[TodoItem] = []
             for t in todos_raw:
                 if not isinstance(t, dict):

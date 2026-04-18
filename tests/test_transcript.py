@@ -90,3 +90,36 @@ def test_find_last_user_is_none_when_transcript_has_none(copy_fixture):
     path = copy_fixture("transcript_no_user.jsonl")
     messages = transcript.parse_jsonl(str(path))
     assert transcript.find_last_user_index(messages) is None
+
+
+def test_parse_jsonl_real_cli_format_skips_metadata(copy_fixture):
+    path = copy_fixture("transcript_real_cli_format.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    # 2 user + 3 assistant = 5 messages (metadata types skipped)
+    assert len(messages) == 5
+    roles = [m.role for m in messages]
+    assert roles == ["user", "assistant", "assistant", "user", "assistant"]
+
+
+def test_parse_jsonl_real_cli_format_reads_nested_role_and_content(copy_fixture):
+    path = copy_fixture("transcript_real_cli_format.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    assert messages[0].content == "refactor the auth module"
+    assert messages[3].content == "continue please"
+
+
+def test_find_last_user_index_on_real_cli_format(copy_fixture):
+    path = copy_fixture("transcript_real_cli_format.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    idx = transcript.find_last_user_index(messages)
+    assert idx is not None
+    assert messages[idx].content == "continue please"
+
+
+def test_extract_latest_todos_on_real_cli_format(copy_fixture):
+    path = copy_fixture("transcript_real_cli_format.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    todos = transcript.extract_latest_todos(messages)
+    assert len(todos) == 1
+    assert todos[0].content == "understand auth"
+    assert todos[0].status == "in_progress"

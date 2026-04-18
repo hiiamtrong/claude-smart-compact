@@ -25,15 +25,21 @@ def _render_in_flight(in_flight: list[Message]) -> str:
         first_line = next(
             (ln for ln in (msg.content or "").splitlines() if ln.strip()), ""
         )
-        if not first_line:
-            # Render tool_use blocks as `tool: <name>`
-            for block in msg.raw.get("content", []) if isinstance(msg.raw.get("content"), list) else []:
+        if first_line:
+            bullets.append(f"- {first_line[:MAX_BULLET_LEN]}")
+            continue
+        # No text content — try to render a tool_use bullet
+        raw = msg.raw
+        content = None
+        if isinstance(raw.get("message"), dict):
+            content = raw["message"].get("content")
+        if content is None:
+            content = raw.get("content")
+        if isinstance(content, list):
+            for block in content:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
                     bullets.append(f"- tool: {block.get('name', '?')}")
                     break
-            continue
-        truncated = first_line[:MAX_BULLET_LEN]
-        bullets.append(f"- {truncated}")
     return "\n".join(bullets) if bullets else "_(no in-flight turns)_"
 
 

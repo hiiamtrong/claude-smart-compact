@@ -109,6 +109,28 @@ def test_pre_compact_missing_transcript_fails_soft(project_root):
     assert not (project_root / ".claude" / "compact-memory" / "sid-missing.md").exists()
 
 
+def test_pre_compact_on_real_cli_format(project_root, fixtures_dir):
+    """Regression test: the real CLI transcript format with `type` and nested
+    `message.role`/`message.content` must produce a memory file with the
+    expected sections."""
+    payload = {
+        "session_id": "real-cli",
+        "transcript_path": str(fixtures_dir / "transcript_real_cli_format.jsonl"),
+        "hook_event_name": "PreCompact",
+        "trigger": "auto",
+    }
+    result = subprocess.run(
+        [sys.executable, str(REPO / "claude_smart_compact" / "pre_compact.py")],
+        input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
+    )
+    assert result.returncode == 0, result.stderr
+    mem = project_root / ".claude/compact-memory/real-cli.md"
+    assert mem.exists(), "memory file must be written for real CLI format"
+    content = mem.read_text()
+    assert "continue please" in content  # last user message
+    assert "understand auth" in content  # in_progress todo
+
+
 def test_pre_compact_trace_records_preserved_preferences_flag(project_root, fixtures_dir):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
