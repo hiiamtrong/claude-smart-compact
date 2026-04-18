@@ -52,3 +52,21 @@ def test_slice_in_flight_returns_tail():
 def test_slice_in_flight_none_returns_all():
     messages = [_msg("user", index=i) for i in range(3)]
     assert transcript.slice_in_flight(messages, None) == messages
+
+
+def test_extract_latest_todos_empty_when_none(copy_fixture):
+    path = copy_fixture("transcript_single_turn.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    assert transcript.extract_latest_todos(messages) == []
+
+
+def test_extract_latest_todos_returns_most_recent_snapshot(copy_fixture):
+    path = copy_fixture("transcript_with_todos.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    todos = transcript.extract_latest_todos(messages)
+    # The second TodoWrite wins — not the first.
+    assert len(todos) == 3
+    assert todos[0].content == "inspect current auth"
+    assert todos[0].status == "completed"
+    assert todos[2].content == "add tests"
+    assert todos[2].status == "in_progress"

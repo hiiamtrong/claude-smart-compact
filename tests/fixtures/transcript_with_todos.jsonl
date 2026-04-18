@@ -1,0 +1,4 @@
+{"role":"user","content":"refactor auth module"}
+{"role":"assistant","content":[{"type":"tool_use","name":"TodoWrite","input":{"todos":[{"content":"inspect current auth","status":"completed","activeForm":"Inspecting current auth"},{"content":"write migration","status":"in_progress","activeForm":"Writing migration"}]}}]}
+{"role":"assistant","content":"working on migration..."}
+{"role":"assistant","content":[{"type":"tool_use","name":"TodoWrite","input":{"todos":[{"content":"inspect current auth","status":"completed","activeForm":"Inspecting current auth"},{"content":"write migration","status":"completed","activeForm":"Writing migration"},{"content":"add tests","status":"in_progress","activeForm":"Adding tests"}]}}]}

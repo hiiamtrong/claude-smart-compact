@@ -74,3 +74,32 @@ def slice_in_flight(messages: list[Message], from_index: Optional[int]) -> list[
     if from_index is None:
         return list(messages)
     return [m for m in messages if m.index >= from_index]
+
+
+def _iter_tool_uses(raw_content) -> list[dict]:
+    """Return every tool_use block found in an assistant content payload."""
+    if not isinstance(raw_content, list):
+        return []
+    return [b for b in raw_content if isinstance(b, dict) and b.get("type") == "tool_use"]
+
+
+def extract_latest_todos(messages: list[Message]) -> list[TodoItem]:
+    """Find the most recent TodoWrite tool_use call and parse its todo list."""
+    latest: list[TodoItem] = []
+    for msg in messages:
+        for block in _iter_tool_uses(msg.raw.get("content", [])):
+            if block.get("name") != "TodoWrite":
+                continue
+            todos_raw = block.get("input", {}).get("todos", [])
+            parsed: list[TodoItem] = []
+            for t in todos_raw:
+                if not isinstance(t, dict):
+                    continue
+                content = t.get("content") or ""
+                status = t.get("status") or "pending"
+                if status not in ("pending", "in_progress", "completed"):
+                    status = "pending"
+                parsed.append(TodoItem(content=content, status=status))
+            if parsed:
+                latest = parsed  # later wins
+    return latest
