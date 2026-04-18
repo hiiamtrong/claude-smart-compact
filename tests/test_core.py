@@ -102,3 +102,17 @@ def test_compose_preserves_existing_preferences():
     assert "never mock DB" in tail
     # Placeholder should NOT appear when existing prefs provided.
     assert "never rewrite existing entries" not in tail
+
+
+def test_compaction_instructions_mentions_key_concerns():
+    text = core.compaction_instructions()
+    for needle in ["last user message", "in_progress", "preferences", "memory file"]:
+        assert needle.lower() in text.lower()
+
+
+def test_prompt_pointer_has_session_id_and_size():
+    text = core.prompt_pointer_text("abc-123", 2048)
+    assert "abc-123" in text
+    assert "compact-memory" in text
+    assert "KB" in text or "bytes" in text
+    assert "## Preferences" in text

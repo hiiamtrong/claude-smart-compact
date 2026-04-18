@@ -77,3 +77,29 @@ def compose_memory_markdown(
         f"## Preferences\n"
         f"{prefs_body}\n"
     )
+
+
+def compaction_instructions() -> str:
+    """Custom instructions injected via PreCompact `additionalContext`."""
+    return (
+        "When summarizing, preserve: "
+        "(1) the last user message verbatim, "
+        "(2) any in_progress todos with their exact wording, "
+        "(3) any stated user preferences or constraints. "
+        "A structured memory file at "
+        "`.claude/compact-memory/<session_id>.md` "
+        "is also persisted for reference."
+    )
+
+
+def prompt_pointer_text(session_id: str, memory_size_bytes: int) -> str:
+    """Pointer injected via UserPromptSubmit `additionalContext`."""
+    size_kb = max(1, round(memory_size_bytes / 1024))
+    return (
+        f"Persistent session memory available at "
+        f"`.claude/compact-memory/{session_id}.md` (~{size_kb}KB). "
+        f"Read it at the start of your next action if you need context about "
+        f"task state, in-progress todos, or user preferences. "
+        f"If the user states a lasting preference or constraint, "
+        f"append it under the `## Preferences` section using the Edit tool."
+    )
