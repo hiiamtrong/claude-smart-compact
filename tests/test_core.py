@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from hooks.lib import core
-from hooks.lib.transcript import Message, TodoItem
+from claude_smart_compact.lib import core
+from claude_smart_compact.lib.transcript import Message, TodoItem
 
 
 def _msg(role, content, idx):

@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _run(payload: dict, cwd: Path):
     return subprocess.run(
-        [sys.executable, str(REPO / "hooks" / "user_prompt.py")],
+        [sys.executable, str(REPO / "claude_smart_compact" / "user_prompt.py")],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -69,7 +69,7 @@ def test_user_prompt_trace_records_pointer_injected(project_root):
 
 def test_user_prompt_invalid_stdin_fails_soft(project_root):
     result = subprocess.run(
-        [sys.executable, str(REPO / "hooks" / "user_prompt.py")],
+        [sys.executable, str(REPO / "claude_smart_compact" / "user_prompt.py")],
         input="garbage",
         capture_output=True,
         text=True,
@@ -87,7 +87,7 @@ def test_user_prompt_creates_claude_dir_if_missing(tmp_path):
         "prompt": "hi",
     }
     result = subprocess.run(
-        [sys.executable, str(REPO / "hooks" / "user_prompt.py")],
+        [sys.executable, str(REPO / "claude_smart_compact" / "user_prompt.py")],
         input=json.dumps(payload),
         capture_output=True,
         text=True,

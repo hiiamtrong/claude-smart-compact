@@ -6,9 +6,10 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Make `lib` importable when invoked directly by the CLI or deployed to .claude/hooks/.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from hooks.lib import core, memory  # noqa: E402
+from lib import core, memory  # noqa: E402
 
 
 def _safe_trace(project_root: Path, session_id: str | None, event: dict) -> None:

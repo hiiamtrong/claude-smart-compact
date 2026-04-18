@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hooks.lib import memory, transcript
+from claude_smart_compact.lib import memory, transcript
 
 
 REPO = Path(__file__).resolve().parent.parent
@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _run(script, payload, cwd):
     return subprocess.run(
-        [sys.executable, str(REPO / "hooks" / script)],
+        [sys.executable, str(REPO / "claude_smart_compact" / script)],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -200,7 +200,7 @@ def test_e12_no_claude_dir(tmp_path, fixtures_dir):
 # E13: Invalid stdin JSON
 def test_e13_invalid_stdin(project_root):
     result = subprocess.run(
-        [sys.executable, str(REPO / "hooks/pre_compact.py")],
+        [sys.executable, str(REPO / "claude_smart_compact/pre_compact.py")],
         input="{{bad",
         capture_output=True,
         text=True,

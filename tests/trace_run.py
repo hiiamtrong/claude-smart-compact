@@ -39,7 +39,7 @@ def main(transcript_path: str) -> None:
         print("=== PreCompact stdin ===")
         print(pre_payload)
         pre = subprocess.run(
-            [sys.executable, str(REPO / "hooks/pre_compact.py")],
+            [sys.executable, str(REPO / "claude_smart_compact/pre_compact.py")],
             input=pre_payload, capture_output=True, text=True, cwd=cwd,
         )
         print("=== PreCompact stdout ===")
@@ -63,7 +63,7 @@ def main(transcript_path: str) -> None:
         print("=== UserPromptSubmit stdin ===")
         print(up_payload)
         up = subprocess.run(
-            [sys.executable, str(REPO / "hooks/user_prompt.py")],
+            [sys.executable, str(REPO / "claude_smart_compact/user_prompt.py")],
             input=up_payload, capture_output=True, text=True, cwd=cwd,
         )
         print("=== UserPromptSubmit stdout ===")

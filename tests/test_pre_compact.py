@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _run_hook(script: str, payload: dict, cwd: Path):
     return subprocess.run(
-        [sys.executable, str(REPO / "hooks" / script)],
+        [sys.executable, str(REPO / "claude_smart_compact" / script)],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -86,7 +86,7 @@ def test_pre_compact_preserves_preferences_on_second_run(project_root, fixtures_
 
 def test_pre_compact_invalid_stdin_fails_soft(project_root):
     result = subprocess.run(
-        [sys.executable, str(REPO / "hooks" / "pre_compact.py")],
+        [sys.executable, str(REPO / "claude_smart_compact" / "pre_compact.py")],
         input="not json",
         capture_output=True,
         text=True,

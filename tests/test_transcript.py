@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hooks.lib import transcript
+from claude_smart_compact.lib import transcript
 
 
 def test_parse_jsonl_empty_file(copy_fixture):
