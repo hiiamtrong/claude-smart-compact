@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -23,8 +25,57 @@ SETTINGS_SNIPPET = """{
   }
 }"""
 
+PRE_COMPACT_ENTRY = {"hooks": [{"type": "command", "command": "python3 .claude/hooks/pre_compact.py"}]}
+USER_PROMPT_ENTRY = {"hooks": [{"type": "command", "command": "python3 .claude/hooks/user_prompt.py"}]}
 
-def install(project_dir: Path, force: bool) -> int:
+
+def _entry_command(entry: dict) -> str | None:
+    try:
+        return entry["hooks"][0]["command"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def _merge_settings(project_dir: Path) -> int:
+    settings = project_dir / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+
+    if settings.exists():
+        raw = settings.read_text(encoding="utf-8")
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            print(f"error: could not parse {settings}: {e}", file=sys.stderr)
+            print("\nMerge this manually:\n", file=sys.stderr)
+            print(SETTINGS_SNIPPET, file=sys.stderr)
+            return 1
+        if not isinstance(data, dict):
+            print(f"error: {settings} is not a JSON object", file=sys.stderr)
+            return 1
+        backup = settings.with_suffix(settings.suffix + ".bak")
+        backup.write_text(raw, encoding="utf-8")
+    else:
+        data = {}
+
+    hooks = data.setdefault("hooks", {})
+    for event_name, entry in [("PreCompact", PRE_COMPACT_ENTRY), ("UserPromptSubmit", USER_PROMPT_ENTRY)]:
+        bucket = hooks.setdefault(event_name, [])
+        if not isinstance(bucket, list):
+            print(f"error: {settings} hooks.{event_name} is not a list", file=sys.stderr)
+            return 1
+        cmd = _entry_command(entry)
+        already = any(_entry_command(existing) == cmd for existing in bucket)
+        if not already:
+            bucket.append(entry)
+
+    tmp = settings.with_suffix(settings.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, settings)
+    print(f"settings: merged {settings}")
+    return 0
+
+
+def install(project_dir: Path, force: bool, write_settings: bool = True) -> int:
     target = project_dir / ".claude" / "hooks"
     target.mkdir(parents=True, exist_ok=True)
 
@@ -44,15 +95,20 @@ def install(project_dir: Path, force: bool) -> int:
             shutil.rmtree(lib_dst)
         else:
             print(f"skip: {lib_dst} already exists (use --force to overwrite)", file=sys.stderr)
-            print("\nNext step: merge the following into .claude/settings.json:\n")
-            print(SETTINGS_SNIPPET)
-            return 0
+            if not write_settings:
+                print("\nNext step: merge the following into .claude/settings.json:\n")
+                print(SETTINGS_SNIPPET)
+                return 0
+            return _merge_settings(project_dir)
     shutil.copytree(lib_src, lib_dst, ignore=shutil.ignore_patterns("__pycache__"))
     print(f"installed: {lib_dst}/")
 
-    print("\nNext step: merge the following into .claude/settings.json:\n")
-    print(SETTINGS_SNIPPET)
-    return 0
+    if not write_settings:
+        print("\nNext step: merge the following into .claude/settings.json:\n")
+        print(SETTINGS_SNIPPET)
+        return 0
+
+    return _merge_settings(project_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,9 +123,11 @@ def main(argv: list[str] | None = None) -> int:
                       help="Project directory (default: current directory)")
     inst.add_argument("--force", action="store_true",
                       help="Overwrite existing files")
+    inst.add_argument("--no-settings", dest="write_settings", action="store_false", default=True,
+                      help="Skip automatic settings.json merge")
     args = parser.parse_args(argv)
     if args.command == "install":
-        return install(args.dir, args.force)
+        return install(args.dir, args.force, args.write_settings)
     return 1
 
 

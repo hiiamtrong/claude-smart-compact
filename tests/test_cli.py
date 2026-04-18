@@ -27,6 +27,77 @@ def test_install_is_idempotent_without_force(tmp_path, capsys):
     assert "skip" in captured.err
 
 
+def test_install_creates_settings_when_missing(tmp_path):
+    cli.install(tmp_path, force=False)
+    settings = tmp_path / ".claude/settings.json"
+    assert settings.exists()
+    data = json.loads(settings.read_text())
+    assert "PreCompact" in data["hooks"]
+    assert "UserPromptSubmit" in data["hooks"]
+    assert data["hooks"]["PreCompact"][0]["hooks"][0]["command"] == \
+        "python3 .claude/hooks/pre_compact.py"
+
+
+def test_install_merges_into_existing_settings_preserving_other_keys(tmp_path):
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps({
+        "permissions": {"allow": ["Bash(git:*)"]},
+        "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo bye"}]}]},
+    }))
+    cli.install(tmp_path, force=False)
+    data = json.loads(settings.read_text())
+    # existing keys preserved
+    assert data["permissions"]["allow"] == ["Bash(git:*)"]
+    assert data["hooks"]["Stop"][0]["hooks"][0]["command"] == "echo bye"
+    # new hooks added
+    assert any(
+        h["hooks"][0]["command"] == "python3 .claude/hooks/pre_compact.py"
+        for h in data["hooks"]["PreCompact"]
+    )
+    assert any(
+        h["hooks"][0]["command"] == "python3 .claude/hooks/user_prompt.py"
+        for h in data["hooks"]["UserPromptSubmit"]
+    )
+
+
+def test_install_is_idempotent_on_settings(tmp_path):
+    cli.install(tmp_path, force=False)
+    cli.install(tmp_path, force=False)
+    data = json.loads((tmp_path / ".claude/settings.json").read_text())
+    # Should have exactly 1 entry each, not 2
+    assert len(data["hooks"]["PreCompact"]) == 1
+    assert len(data["hooks"]["UserPromptSubmit"]) == 1
+
+
+def test_install_backs_up_existing_settings(tmp_path):
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    original = {"permissions": {"allow": ["X"]}}
+    settings.write_text(json.dumps(original))
+    cli.install(tmp_path, force=False)
+    backup = tmp_path / ".claude/settings.json.bak"
+    assert backup.exists()
+    assert json.loads(backup.read_text()) == original
+
+
+def test_install_no_settings_flag_skips_merge(tmp_path):
+    cli.install(tmp_path, force=False, write_settings=False)
+    assert not (tmp_path / ".claude/settings.json").exists()
+
+
+def test_install_invalid_existing_settings_errors_without_writing(tmp_path, capsys):
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text("{not valid json")
+    before = settings.read_text()
+    rc = cli.install(tmp_path, force=False)
+    assert rc != 0
+    assert settings.read_text() == before  # untouched
+    captured = capsys.readouterr()
+    assert "invalid" in captured.err.lower() or "parse" in captured.err.lower()
+
+
 def test_install_force_overwrites(tmp_path):
     cli.install(tmp_path, force=False)
     pre = tmp_path / ".claude/hooks/pre_compact.py"
