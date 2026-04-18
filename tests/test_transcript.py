@@ -125,64 +125,75 @@ def test_extract_latest_todos_on_real_cli_format(copy_fixture):
     assert todos[0].status == "in_progress"
 
 
-def test_find_last_user_index_skips_compact_slash_command():
-    # Build an in-memory transcript: user task, assistant, user /compact
+def _compact_cmd_msg(index: int, args: str = "") -> transcript.Message:
+    body = (
+        f"<command-name>/compact</command-name>\n"
+        f"            <command-message>compact</command-message>\n"
+        f"            <command-args>{args}</command-args>"
+    )
+    return transcript.Message(role="user", content=body, raw={}, index=index)
+
+
+def _custom_cmd_msg(index: int, name: str, args: str) -> transcript.Message:
+    body = (
+        f"<command-name>/{name}</command-name>\n"
+        f"            <command-message>{name}</command-message>\n"
+        f"            <command-args>{args}</command-args>"
+    )
+    return transcript.Message(role="user", content=body, raw={}, index=index)
+
+
+def test_find_last_user_skips_slash_command_with_empty_args():
     msgs = [
         transcript.Message(role="user", content="refactor auth", raw={}, index=0),
         transcript.Message(role="assistant", content="ok", raw={}, index=1),
-        transcript.Message(
-            role="user",
-            content=(
-                "<command-name>/compact</command-name>\n"
-                "            <command-message>compact</command-message>\n"
-                "            <command-args></command-args>"
-            ),
-            raw={}, index=2,
-        ),
+        _compact_cmd_msg(2),  # /compact with empty args
     ]
     idx = transcript.find_last_user_index(msgs)
-    assert idx == 0  # skip the /compact, return the real task
+    assert idx == 0  # skipped /compact, returned real task
 
 
-def test_find_last_user_index_skips_multiple_meta_commands():
+def test_find_last_user_keeps_slash_command_with_args():
+    """Slash commands with non-empty args carry the user's task intent."""
     msgs = [
-        transcript.Message(role="user", content="write tests", raw={}, index=0),
-        transcript.Message(role="assistant", content="done", raw={}, index=1),
-        transcript.Message(
-            role="user",
-            content="<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>",
-            raw={}, index=2,
-        ),
-        transcript.Message(
-            role="user",
-            content="<command-name>/cost</command-name>\n<command-message>cost</command-message>\n<command-args></command-args>",
-            raw={}, index=3,
-        ),
+        transcript.Message(role="user", content="hi", raw={}, index=0),
+        _custom_cmd_msg(1, "ultrareview", "@app/foo.py fix this"),
+    ]
+    assert transcript.find_last_user_index(msgs) == 1
+
+
+def test_find_last_user_skips_any_zero_arg_slash_command():
+    """Structural approach: no hardcoded list — ANY slash command with empty args is skipped."""
+    msgs = [
+        transcript.Message(role="user", content="real task", raw={}, index=0),
+        _custom_cmd_msg(1, "mymeta", ""),  # custom command, no args → treated as meta
     ]
     assert transcript.find_last_user_index(msgs) == 0
 
 
-def test_find_last_user_index_keeps_non_meta_slash_commands():
-    """Slash commands that aren't in the skip list are valid task markers."""
+def test_find_last_user_whitespace_only_args_is_skipped():
     msgs = [
-        transcript.Message(role="user", content="hi", raw={}, index=0),
-        transcript.Message(
-            role="user",
-            content="<command-name>/ultrareview</command-name>\n<command-message>ultrareview</command-message>\n<command-args>@app/services/excel.py</command-args>",
-            raw={}, index=1,
-        ),
+        transcript.Message(role="user", content="real task", raw={}, index=0),
+        _custom_cmd_msg(1, "foo", "   \n  \t "),  # whitespace only
     ]
-    # /ultrareview is NOT in skip list → should be returned
-    assert transcript.find_last_user_index(msgs) == 1
+    assert transcript.find_last_user_index(msgs) == 0
 
 
-def test_find_last_user_index_all_slash_commands_returns_none():
-    """If every user message is a skipped slash command, return None."""
-    msgs = [
-        transcript.Message(
-            role="user",
-            content="<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>",
-            raw={}, index=0,
-        ),
-    ]
+def test_find_last_user_all_meta_commands_returns_none():
+    msgs = [_compact_cmd_msg(0), _compact_cmd_msg(1)]
     assert transcript.find_last_user_index(msgs) is None
+
+
+def test_active_task_text_returns_args_for_slash_command():
+    msg = _custom_cmd_msg(0, "ultrareview", "@app/foo.py fix this")
+    assert transcript.active_task_text(msg) == "@app/foo.py fix this"
+
+
+def test_active_task_text_returns_content_for_plain_user_text():
+    msg = transcript.Message(role="user", content="just a normal message", raw={}, index=0)
+    assert transcript.active_task_text(msg) == "just a normal message"
+
+
+def test_active_task_text_returns_empty_for_meta_slash_command():
+    msg = _compact_cmd_msg(0, args="")
+    assert transcript.active_task_text(msg) == ""

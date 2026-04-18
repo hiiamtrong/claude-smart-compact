@@ -163,6 +163,36 @@ def test_pre_compact_skips_compact_slash_command(project_root, tmp_path):
     assert "<command-name>/compact</command-name>" not in quoted_lines[0]
 
 
+def test_pre_compact_extracts_args_from_slash_command(project_root, tmp_path):
+    """A slash-command user turn with args should be treated as a task,
+    and the memory file's Active Task should contain the ARGS (not the wrapper)."""
+    tx = tmp_path / "with-args.jsonl"
+    tx.write_text(
+        '{"type":"user","message":{"role":"user","content":"<command-name>/ultrareview</command-name>\\n<command-message>ultrareview</command-message>\\n<command-args>@app/foo.py please fix null handling</command-args>"},"uuid":"u1"}\n'
+        '{"type":"assistant","message":{"role":"assistant","content":"looking"},"uuid":"a1"}\n'
+    )
+    payload = {
+        "session_id": "with-args",
+        "transcript_path": str(tx),
+        "hook_event_name": "PreCompact",
+        "trigger": "auto",
+    }
+    result = subprocess.run(
+        [sys.executable, str(REPO / "claude_smart_compact" / "pre_compact.py")],
+        input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
+    )
+    assert result.returncode == 0, result.stderr
+    mem = project_root / ".claude/compact-memory/with-args.md"
+    assert mem.exists()
+    content = mem.read_text()
+    assert "@app/foo.py please fix null handling" in content
+    # The XML wrapper should NOT appear in the Active Task blockquote line.
+    quoted_lines = [ln for ln in content.splitlines() if ln.startswith("> ")]
+    assert quoted_lines, "No blockquoted active task line found"
+    assert "<command-name>" not in quoted_lines[0]
+    assert quoted_lines[0] == "> @app/foo.py please fix null handling"
+
+
 def test_pre_compact_trace_records_preserved_preferences_flag(project_root, fixtures_dir):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)

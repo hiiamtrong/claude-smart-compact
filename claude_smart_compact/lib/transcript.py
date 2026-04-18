@@ -11,45 +11,41 @@ Role = Literal["user", "assistant", "system", "tool"]
 
 VALID_ROLES = {"user", "assistant", "system", "tool"}
 
-# Slash commands that are META (session management, CLI control) — not task statements.
-# Custom / project-specific slash commands are intentionally NOT listed here.
-SLASH_COMMAND_SKIP_PREFIXES = (
-    "/compact",
-    "/clear",
-    "/cost",
-    "/context",
-    "/status",
-    "/help",
-    "/memory",
-    "/init",
-    "/logout",
-    "/login",
-    "/model",
-    "/review",
-    "/config",
-    "/bug",
-    "/release-notes",
-    "/doctor",
-    "/pr",
-    "/terminal-setup",
-    "/mcp",
-    "/permissions",
-    "/hooks",
-    "/ide",
+# Detect slash-command messages by the envelope Claude Code wraps them in.
+_SLASH_NAME_PATTERN = re.compile(
+    r"<command-name>/[a-zA-Z0-9_\-]+</command-name>",
+    re.DOTALL,
+)
+_SLASH_ARGS_PATTERN = re.compile(
+    r"<command-args>(.*?)</command-args>",
+    re.DOTALL,
 )
 
-_SLASH_CMD_RE = re.compile(r"<command-name>(/[a-zA-Z0-9_-]+)</command-name>")
+
+def _slash_command_args(content: str) -> Optional[str]:
+    """If `content` is a slash-command user turn, return the args body.
+
+    Returns:
+      - None if `content` is NOT a slash-command message (plain user text).
+      - The <command-args> body (possibly empty string) if it is.
+    """
+    if not content or not _SLASH_NAME_PATTERN.search(content):
+        return None
+    m = _SLASH_ARGS_PATTERN.search(content)
+    return m.group(1).strip() if m else ""
 
 
-def _extract_slash_command(content: str) -> str | None:
-    """Return the /name portion if `content` starts with a slash-command marker."""
-    if not content:
-        return None
-    stripped = content.lstrip()
-    if not stripped.startswith("<command-name>"):
-        return None
-    m = _SLASH_CMD_RE.match(stripped)
-    return m.group(1) if m else None
+def active_task_text(msg: "Message") -> str:
+    """Return the human-readable 'active task' body for a user Message.
+
+    - For plain user text: returns msg.content unchanged.
+    - For a slash-command with args: returns the args body only.
+    - For a slash-command with empty args: returns '' (caller handles placeholder).
+    """
+    args = _slash_command_args(msg.content)
+    if args is None:
+        return msg.content
+    return args
 
 
 @dataclass
@@ -126,14 +122,24 @@ def parse_jsonl(path: str) -> list[Message]:
 
 
 def find_last_user_index(messages: list[Message]) -> Optional[int]:
-    """Return index of last role=user message, skipping meta slash commands."""
+    """Return index of last user message representing actual intent.
+
+    Skips slash-command user turns with empty <command-args> (meta commands
+    like /compact, /clear). Keeps slash commands that DO have args, because
+    the user's intent lives inside the args.
+    """
     for msg in reversed(messages):
         if msg.role != "user":
             continue
-        cmd = _extract_slash_command(msg.content)
-        if cmd in SLASH_COMMAND_SKIP_PREFIXES:
-            continue
-        return msg.index
+        args = _slash_command_args(msg.content)
+        if args is None:
+            # Not a slash command — plain user text, always valid.
+            return msg.index
+        if args:
+            # Slash command WITH args — task intent is in the args, keep this turn.
+            return msg.index
+        # Slash command with empty args — meta, skip.
+        continue
     return None
 
 

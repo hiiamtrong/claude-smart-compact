@@ -47,7 +47,7 @@ def main() -> None:
         t for t in transcript.extract_latest_todos(messages)
         if t.status in ("in_progress", "pending")
     ]
-    active_task_msg = messages[last_user_idx].content if messages else ""
+    active_task_msg = transcript.active_task_text(messages[last_user_idx]) if messages else ""
 
     mem_file = memory.memory_path(root, session_id)
     existing_prefs = memory.read_preferences_section(mem_file)
