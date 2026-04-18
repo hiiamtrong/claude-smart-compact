@@ -68,3 +68,40 @@ def test_append_trace_writes_jsonl_with_timestamp(tmp_path):
         assert "ts" in event
         assert event["ts"].endswith("Z")
         assert "hook" in event
+
+
+def test_read_preferences_returns_none_when_file_missing(tmp_path):
+    assert memory.read_preferences_section(tmp_path / "nope.md") is None
+
+
+def test_read_preferences_returns_none_when_section_missing(tmp_path):
+    p = tmp_path / "mem.md"
+    p.write_text("# Session Memory\n\n## Active Task\n> foo\n")
+    assert memory.read_preferences_section(p) is None
+
+
+def test_read_preferences_returns_body_of_section(tmp_path):
+    p = tmp_path / "mem.md"
+    p.write_text(
+        "# Session Memory\n\n"
+        "## Active Task\n> foo\n\n"
+        "## Preferences\n"
+        "_instructions_\n\n"
+        "- use pnpm\n"
+        "- never mock DB\n"
+    )
+    body = memory.read_preferences_section(p)
+    assert body is not None
+    assert "use pnpm" in body
+    assert "never mock DB" in body
+
+
+def test_read_preferences_stops_at_next_h2(tmp_path):
+    p = tmp_path / "mem.md"
+    p.write_text(
+        "## Preferences\n- x\n\n## Trailing\n- should not leak\n"
+    )
+    body = memory.read_preferences_section(p)
+    assert body is not None
+    assert "- x" in body
+    assert "should not leak" not in body

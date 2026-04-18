@@ -49,3 +49,29 @@ def append_trace(path: Path, event: dict) -> None:
     record = {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **event}
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+from typing import Optional
+
+
+def read_preferences_section(path: Path) -> Optional[str]:
+    """Return the body of `## Preferences` section of a memory file, or None."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    body: list[str] = []
+    in_section = False
+    for line in lines:
+        stripped = line.lstrip()
+        if not in_section:
+            if stripped.startswith("## Preferences"):
+                in_section = True
+            continue
+        if stripped.startswith("## "):
+            break
+        body.append(line)
+    if not in_section:
+        return None
+    return "\n".join(body).strip("\n") or ""
