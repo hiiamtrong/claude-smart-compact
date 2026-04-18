@@ -158,23 +158,6 @@ def _is_cli_injected_message(msg: "Message") -> bool:
     return False
 
 
-def is_skippable_user_turn(msg: "Message") -> bool:
-    """True if this user turn is NOT a real user prompt.
-
-    Combines:
-      - CLI-injected envelopes (tool results, local-command stdout/stderr/caveat)
-      - Meta slash commands (those with empty <command-args>)
-
-    A slash command WITH non-empty args is NOT skippable — the args are the task intent.
-    """
-    if _is_cli_injected_message(msg):
-        return True
-    args = _slash_command_args(msg.content)
-    if args == "":  # has <command-name>...<command-args></command-args> empty
-        return True
-    return False
-
-
 def find_last_user_index(messages: list[Message]) -> Optional[int]:
     """Return index of last user message representing actual intent.
 
@@ -185,9 +168,14 @@ def find_last_user_index(messages: list[Message]) -> Optional[int]:
     for msg in reversed(messages):
         if msg.role != "user":
             continue
-        if is_skippable_user_turn(msg):
+        if _is_cli_injected_message(msg):
             continue
-        return msg.index
+        args = _slash_command_args(msg.content)
+        if args is None:
+            return msg.index  # plain user text
+        if args:
+            return msg.index  # slash command with real args
+        continue  # slash command with empty args (meta)
     return None
 
 

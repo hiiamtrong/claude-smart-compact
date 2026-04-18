@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from .transcript import Message, TodoItem, is_skippable_user_turn
+from .transcript import Message, TodoItem
 
 MAX_BULLET_LEN = 120
 DEFAULT_PREFS_BODY = (
@@ -22,9 +22,6 @@ def _quote_block(text: str) -> str:
 def _render_in_flight(in_flight: list[Message]) -> str:
     bullets: list[str] = []
     for msg in in_flight:
-        # Skip CLI-injected user messages (they're noise in the timeline).
-        if msg.role == "user" and is_skippable_user_turn(msg):
-            continue
         first_line = next(
             (ln for ln in (msg.content or "").splitlines() if ln.strip()), ""
         )

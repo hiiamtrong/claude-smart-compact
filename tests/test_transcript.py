@@ -323,3 +323,38 @@ def test_find_last_user_keeps_user_text_that_quotes_a_marker():
         ),
     ]
     assert transcript.find_last_user_index(msgs) == 0
+
+
+def test_is_skippable_user_turn_on_cli_injected():
+    msg = transcript.Message(
+        role="user",
+        content="tool result output",
+        raw={"toolUseResult": {"exitCode": 0}, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}},
+        index=0,
+    )
+    assert transcript.is_skippable_user_turn(msg) is True
+
+
+def test_is_skippable_user_turn_on_empty_args_slash_command():
+    msg = transcript.Message(
+        role="user",
+        content="<command-name>/compact</command-name>\n<command-args></command-args>",
+        raw={},
+        index=0,
+    )
+    assert transcript.is_skippable_user_turn(msg) is True
+
+
+def test_is_skippable_user_turn_on_task_slash_command():
+    msg = transcript.Message(
+        role="user",
+        content="<command-name>/ultrareview</command-name>\n<command-args>fix X</command-args>",
+        raw={},
+        index=0,
+    )
+    assert transcript.is_skippable_user_turn(msg) is False
+
+
+def test_is_skippable_user_turn_on_plain_user_text():
+    msg = transcript.Message(role="user", content="just a prompt", raw={}, index=0)
+    assert transcript.is_skippable_user_turn(msg) is False
