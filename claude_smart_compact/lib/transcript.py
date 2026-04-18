@@ -121,25 +121,50 @@ def parse_jsonl(path: str) -> list[Message]:
     return messages
 
 
+def _is_tool_result_message(msg: "Message") -> bool:
+    """True if this 'user' message is actually a tool-result envelope injected
+    by the CLI (not a real user prompt).
+
+    Detection uses two orthogonal signals — message is a tool result if EITHER holds.
+    """
+    raw = msg.raw
+    # Signal 1: top-level toolUseResult key (distinguishing CLI metadata).
+    if isinstance(raw, dict) and "toolUseResult" in raw:
+        return True
+    # Signal 2: message.content is a list and every block is a tool_result.
+    msg_obj = raw.get("message") if isinstance(raw, dict) else None
+    content = None
+    if isinstance(msg_obj, dict):
+        content = msg_obj.get("content")
+    if content is None and isinstance(raw, dict):
+        content = raw.get("content")
+    if isinstance(content, list) and len(content) > 0:
+        if all(
+            isinstance(b, dict) and b.get("type") == "tool_result"
+            for b in content
+        ):
+            return True
+    return False
+
+
 def find_last_user_index(messages: list[Message]) -> Optional[int]:
     """Return index of last user message representing actual intent.
 
-    Skips slash-command user turns with empty <command-args> (meta commands
-    like /compact, /clear). Keeps slash commands that DO have args, because
-    the user's intent lives inside the args.
+    Skips:
+      - slash-command meta turns (empty <command-args>)
+      - tool-result envelopes injected as user messages
     """
     for msg in reversed(messages):
         if msg.role != "user":
             continue
+        if _is_tool_result_message(msg):
+            continue
         args = _slash_command_args(msg.content)
         if args is None:
-            # Not a slash command — plain user text, always valid.
-            return msg.index
+            return msg.index  # plain user text
         if args:
-            # Slash command WITH args — task intent is in the args, keep this turn.
-            return msg.index
-        # Slash command with empty args — meta, skip.
-        continue
+            return msg.index  # slash command with real args
+        continue  # slash command with empty args (meta)
     return None
 
 

@@ -193,6 +193,36 @@ def test_pre_compact_extracts_args_from_slash_command(project_root, tmp_path):
     assert quoted_lines[0] == "> @app/foo.py please fix null handling"
 
 
+def test_pre_compact_skips_tool_result_user_messages(project_root, tmp_path):
+    """Tool-result envelopes (role=user) must be skipped; Active Task comes from the real prompt before them."""
+    tx = tmp_path / "tool-results.jsonl"
+    tx.write_text(
+        '{"type":"user","message":{"role":"user","content":"run pre-commit"},"uuid":"u1"}\n'
+        '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"./pre-commit"}}]},"uuid":"a1"}\n'
+        '{"type":"user","toolUseResult":{"stdout":"pre-commit OK","exitCode":0},"message":{"role":"user","content":[{"tool_use_id":"t1","type":"tool_result","content":"pre-commit passed"}]},"uuid":"u2"}\n'
+    )
+    payload = {
+        "session_id": "tool-result-test",
+        "transcript_path": str(tx),
+        "hook_event_name": "PreCompact",
+        "trigger": "auto",
+    }
+    result = subprocess.run(
+        [sys.executable, str(REPO / "claude_smart_compact" / "pre_compact.py")],
+        input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
+    )
+    assert result.returncode == 0, result.stderr
+    mem = project_root / ".claude/compact-memory/tool-result-test.md"
+    assert mem.exists()
+    content = mem.read_text()
+    assert "run pre-commit" in content
+    # Active Task blockquote must be the real user prompt, not the tool result content.
+    quoted_lines = [ln for ln in content.splitlines() if ln.startswith("> ")]
+    assert quoted_lines, "No blockquoted active task line found"
+    assert quoted_lines[0] == "> run pre-commit"
+    assert "pre-commit passed" not in quoted_lines[0]
+
+
 def test_pre_compact_trace_records_preserved_preferences_flag(project_root, fixtures_dir):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)

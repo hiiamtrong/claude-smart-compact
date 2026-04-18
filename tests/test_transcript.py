@@ -197,3 +197,74 @@ def test_active_task_text_returns_content_for_plain_user_text():
 def test_active_task_text_returns_empty_for_meta_slash_command():
     msg = _compact_cmd_msg(0, args="")
     assert transcript.active_task_text(msg) == ""
+
+
+def _tool_result_msg(index: int, has_toolUseResult: bool = True, content_list: bool = True):
+    """Construct a Message that looks like a Claude Code tool-result envelope."""
+    raw = {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": (
+                [{"tool_use_id": "tool_x", "type": "tool_result", "content": "ran some command"}]
+                if content_list else "ran some command"
+            ),
+        },
+    }
+    if has_toolUseResult:
+        raw["toolUseResult"] = {"stdout": "...", "exitCode": 0}
+    return transcript.Message(role="user", content="ran some command", raw=raw, index=index)
+
+
+def test_find_last_user_skips_tool_result_with_toolUseResult_key():
+    msgs = [
+        transcript.Message(role="user", content="real task", raw={}, index=0),
+        transcript.Message(role="assistant", content="done", raw={}, index=1),
+        _tool_result_msg(2, has_toolUseResult=True, content_list=True),
+    ]
+    assert transcript.find_last_user_index(msgs) == 0
+
+
+def test_find_last_user_skips_tool_result_when_content_is_all_tool_result_blocks():
+    """Even without the toolUseResult key, a user message whose content is
+    entirely tool_result blocks should be recognized as a tool envelope."""
+    msgs = [
+        transcript.Message(role="user", content="real task", raw={}, index=0),
+        transcript.Message(role="assistant", content="ok", raw={}, index=1),
+        _tool_result_msg(2, has_toolUseResult=False, content_list=True),
+    ]
+    assert transcript.find_last_user_index(msgs) == 0
+
+
+def test_find_last_user_keeps_message_with_mixed_content_blocks():
+    """A user message whose content list contains text (not just tool_result) is real."""
+    raw = {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "please do X"},
+                {"type": "tool_result", "content": "some result"},
+            ],
+        },
+    }
+    msgs = [
+        transcript.Message(role="user", content="please do X", raw=raw, index=0),
+    ]
+    assert transcript.find_last_user_index(msgs) == 0
+
+
+def test_find_last_user_keeps_plain_string_content():
+    """Plain string content (no list, no toolUseResult) is always a real user prompt."""
+    msgs = [
+        transcript.Message(role="user", content="plain text", raw={}, index=0),
+    ]
+    assert transcript.find_last_user_index(msgs) == 0
+
+
+def test_find_last_user_all_tool_results_returns_none():
+    msgs = [
+        _tool_result_msg(0, has_toolUseResult=True, content_list=True),
+        _tool_result_msg(1, has_toolUseResult=True, content_list=True),
+    ]
+    assert transcript.find_last_user_index(msgs) is None
