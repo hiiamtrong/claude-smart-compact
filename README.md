@@ -26,7 +26,8 @@ cd /path/to/your/project
 claude-smart-compact install
 ```
 
-Then merge the printed snippet into `.claude/settings.json` (or create the file with it).
+The installer automatically creates or updates `.claude/settings.json` with the required hook entries,
+preserving any existing configuration. To skip this and manage `settings.json` manually, pass `--no-settings`.
 
 ### Manual (without pip)
 
