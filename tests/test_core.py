@@ -116,3 +116,22 @@ def test_prompt_pointer_has_session_id_and_size():
     assert "compact-memory" in text
     assert "KB" in text or "bytes" in text
     assert "## Preferences" in text
+
+
+def test_compose_renders_tool_use_as_bullet():
+    in_flight = [
+        Message(
+            role="assistant",
+            content="",
+            raw={"content": [{"type": "tool_use", "name": "Bash", "input": {}}]},
+            index=1,
+        )
+    ]
+    md = core.compose_memory_markdown(
+        session_id="sid",
+        active_task_user_msg="task",
+        in_flight=in_flight,
+        todos=[],
+        existing_preferences_section=None,
+    )
+    assert "- tool: Bash" in md

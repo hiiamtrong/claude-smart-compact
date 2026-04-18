@@ -48,6 +48,21 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as e:
+        try:
+            root = memory.find_project_root(Path.cwd())
+            session_id = None
+            try:
+                raw = json.loads(sys.stdin.read() or "{}")
+                session_id = raw.get("session_id")
+            except Exception:
+                pass
+            _safe_trace(root, session_id, {
+                "hook": "UserPromptSubmit",
+                "error": str(e),
+                "error_type": type(e).__name__,
+            })
+        except Exception:
+            pass
         json.dump({}, sys.stdout)
         sys.exit(0)
