@@ -21,8 +21,7 @@ def _safe_trace(project_root: Path, session_id: str | None, event: dict) -> None
         pass
 
 
-def main() -> None:
-    payload = json.load(sys.stdin)
+def main(payload: dict) -> None:
     session_id = payload["session_id"]
     transcript_path = payload.get("transcript_path", "")
     trigger = payload.get("trigger", "unknown")
@@ -77,17 +76,19 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    payload: dict = {}
     try:
-        main()
+        payload = json.load(sys.stdin)
+    except Exception:
+        # stdin itself is malformed — no session_id to correlate with.
+        json.dump({}, sys.stdout)
+        sys.exit(0)
+    try:
+        main(payload)
     except Exception as e:
         try:
             root = memory.find_project_root(Path.cwd())
-            session_id = None
-            try:
-                raw = json.loads(sys.stdin.read() or "{}")
-                session_id = raw.get("session_id")
-            except Exception:
-                pass
+            session_id = payload.get("session_id") if isinstance(payload, dict) else None
             _safe_trace(root, session_id, {
                 "hook": "PreCompact",
                 "error": str(e),

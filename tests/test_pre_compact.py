@@ -253,6 +253,44 @@ def test_pre_compact_skips_local_command_stdout_user_messages(project_root, tmp_
     assert "hook crashed" not in active_task_line
 
 
+def test_pre_compact_error_trace_has_session_id(project_root, fixtures_dir):
+    """Regression: when main() raises AFTER the payload is parsed, the error
+    trace must correlate with the real session_id (not null)."""
+    hook = REPO / "claude_smart_compact" / "pre_compact.py"
+    # Patch memory.memory_path (called by main() only, NOT by the error handler)
+    # to force main() to raise after the payload is parsed.
+    wrapper = (
+        "import runpy, sys\n"
+        f"sys.path.insert(0, {str(hook.parent)!r})\n"
+        "from lib import memory\n"
+        "def _boom(*a, **kw):\n"
+        "    raise RuntimeError('boom after parse')\n"
+        "memory.memory_path = _boom\n"
+        f"runpy.run_path({str(hook)!r}, run_name='__main__')\n"
+    )
+    payload = {
+        "session_id": "sid-err",
+        "transcript_path": str(fixtures_dir / "transcript_with_todos.jsonl"),
+        "hook_event_name": "PreCompact",
+        "trigger": "auto",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", wrapper],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {}
+    trace = project_root / ".claude" / "compact-memory" / "sid-err.trace.jsonl"
+    assert trace.exists(), "error trace must be written under the real session_id"
+    event = json.loads(trace.read_text().strip().splitlines()[0])
+    assert event["hook"] == "PreCompact"
+    assert event["error_type"] == "RuntimeError"
+    assert event["error"] == "boom after parse"
+
+
 def test_pre_compact_trace_records_preserved_preferences_flag(project_root, fixtures_dir):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
