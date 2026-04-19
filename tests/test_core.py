@@ -45,8 +45,26 @@ def test_compose_lists_in_flight_turns_truncated():
         todos=[],
         existing_preferences_section=None,
     )
-    # Each non-empty turn renders as a bullet with max 120 char preview.
-    assert "- " + "a" * 120 in md
+    # Truncated bullets end with a single-char ellipsis so readers see it was clipped.
+    expected_bullet = "- " + "a" * (core.MAX_BULLET_LEN - 1) + "…"
+    assert expected_bullet in md
+    # Bullet length (without "- " prefix) must not exceed MAX_BULLET_LEN chars.
+    bullet_line = next(ln for ln in md.splitlines() if ln.startswith("- a"))
+    assert len(bullet_line) <= core.MAX_BULLET_LEN + 2
+
+
+def test_compose_short_in_flight_line_not_truncated():
+    shortline = "a" * 50
+    in_flight = [_msg("assistant", shortline, 1)]
+    md = core.compose_memory_markdown(
+        session_id="sid",
+        active_task_user_msg="task",
+        in_flight=in_flight,
+        todos=[],
+        existing_preferences_section=None,
+    )
+    assert "- " + shortline in md
+    assert "…" not in md
 
 
 def test_compose_renders_todos_bullets():
