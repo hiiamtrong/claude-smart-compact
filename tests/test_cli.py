@@ -184,6 +184,22 @@ def test_install_backs_up_existing_settings(tmp_path):
     assert json.loads(backup.read_text()) == original
 
 
+def test_install_second_run_does_not_rewrite_backup(tmp_path):
+    """Re-running install when settings already contain the hooks must not touch .bak."""
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    original = {"permissions": {"allow": ["X"]}}
+    settings.write_text(json.dumps(original))
+
+    cli.install(tmp_path, force=False)
+    backup = tmp_path / ".claude/settings.json.bak"
+    assert backup.exists()
+    first_mtime = os.stat(backup).st_mtime_ns
+
+    cli.install(tmp_path, force=False)
+    assert os.stat(backup).st_mtime_ns == first_mtime
+
+
 def test_install_no_settings_flag_skips_merge(tmp_path):
     cli.install(tmp_path, force=False, write_settings=False)
     assert not (tmp_path / ".claude/settings.json").exists()
