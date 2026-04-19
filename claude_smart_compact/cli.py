@@ -16,20 +16,24 @@ HOOK_FILES = ("pre_compact.py", "user_prompt.py")
 LIB_DIR = "lib"
 IS_WINDOWS = platform.system() == "Windows"
 
-# Keep the snippet printed when --no-settings is used.
-SETTINGS_SNIPPET = """{
-  "hooks": {
-    "PreCompact": [
-      {"hooks": [{"type": "command", "command": "python3 .claude/hooks/pre_compact.py"}]}
-    ],
-    "UserPromptSubmit": [
-      {"hooks": [{"type": "command", "command": "python3 .claude/hooks/user_prompt.py"}]}
-    ]
-  }
-}"""
 
-PRE_COMPACT_ENTRY = {"hooks": [{"type": "command", "command": "python3 .claude/hooks/pre_compact.py"}]}
-USER_PROMPT_ENTRY = {"hooks": [{"type": "command", "command": "python3 .claude/hooks/user_prompt.py"}]}
+def _python_bin() -> str:
+    """Interpreter name to embed in hook commands. `python3` is unavailable on Windows."""
+    return "python" if IS_WINDOWS else "python3"
+
+
+def _hook_entry(script_name: str) -> dict:
+    return {"hooks": [{"type": "command", "command": f"{_python_bin()} .claude/hooks/{script_name}"}]}
+
+
+def _settings_snippet() -> str:
+    """Snippet printed when --no-settings is used."""
+    return json.dumps({
+        "hooks": {
+            "PreCompact": [_hook_entry("pre_compact.py")],
+            "UserPromptSubmit": [_hook_entry("user_prompt.py")],
+        }
+    }, indent=2)
 
 
 def _entry_command(entry: dict) -> str | None:
@@ -50,7 +54,7 @@ def _merge_settings(project_dir: Path) -> int:
         except json.JSONDecodeError as e:
             print(f"error: could not parse {settings}: {e}", file=sys.stderr)
             print("\nMerge this manually:\n", file=sys.stderr)
-            print(SETTINGS_SNIPPET, file=sys.stderr)
+            print(_settings_snippet(), file=sys.stderr)
             return 1
         if not isinstance(data, dict):
             print(f"error: {settings} is not a JSON object", file=sys.stderr)
@@ -61,7 +65,11 @@ def _merge_settings(project_dir: Path) -> int:
         data = {}
 
     hooks = data.setdefault("hooks", {})
-    for event_name, entry in [("PreCompact", PRE_COMPACT_ENTRY), ("UserPromptSubmit", USER_PROMPT_ENTRY)]:
+    entries = [
+        ("PreCompact", _hook_entry("pre_compact.py")),
+        ("UserPromptSubmit", _hook_entry("user_prompt.py")),
+    ]
+    for event_name, entry in entries:
         bucket = hooks.setdefault(event_name, [])
         if not isinstance(bucket, list):
             print(f"error: {settings} hooks.{event_name} is not a list", file=sys.stderr)
@@ -161,7 +169,7 @@ def install(project_dir: Path, force: bool, write_settings: bool = True, use_sym
 
     if not write_settings:
         print("\nNext step: merge the following into .claude/settings.json:\n")
-        print(SETTINGS_SNIPPET)
+        print(_settings_snippet())
         return 0
 
     return _merge_settings(project_dir)

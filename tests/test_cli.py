@@ -194,3 +194,25 @@ def test_install_on_windows_falls_back_to_copy(tmp_path, monkeypatch, capsys):
     # Files should be regular copies, not symlinks.
     assert not (tmp_path / ".claude/hooks/pre_compact.py").is_symlink()
     assert (tmp_path / ".claude/hooks/pre_compact.py").is_file()
+
+
+# ============== Interpreter selection ==============
+
+def test_python_bin_uses_python3_on_non_windows(monkeypatch):
+    monkeypatch.setattr(cli, "IS_WINDOWS", False)
+    assert cli._python_bin() == "python3"
+
+
+def test_python_bin_uses_python_on_windows(monkeypatch):
+    monkeypatch.setattr(cli, "IS_WINDOWS", True)
+    assert cli._python_bin() == "python"
+
+
+def test_install_on_windows_writes_python_not_python3_in_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "IS_WINDOWS", True)
+    cli.install(tmp_path, force=False)
+    data = json.loads((tmp_path / ".claude/settings.json").read_text())
+    pre_cmd = data["hooks"]["PreCompact"][0]["hooks"][0]["command"]
+    user_cmd = data["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    assert pre_cmd == "python .claude/hooks/pre_compact.py"
+    assert user_cmd == "python .claude/hooks/user_prompt.py"
