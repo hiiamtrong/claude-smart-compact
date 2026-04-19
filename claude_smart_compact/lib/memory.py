@@ -44,6 +44,8 @@ def write_atomic(path: Path, content: str) -> None:
 
 def append_trace(path: Path, event: dict) -> None:
     """Append one JSONL record to `path` with an ISO-8601 UTC timestamp."""
+    if os.getenv("CLAUDE_SMART_COMPACT_TRACE", "1") == "0":
+        return
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **event}

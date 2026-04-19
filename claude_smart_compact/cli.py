@@ -56,9 +56,10 @@ def _entry_hook_script(entry: dict) -> str | None:
     return m.group(0) if m else None
 
 
-def _merge_settings(project_dir: Path) -> int:
+def _merge_settings(project_dir: Path, dry_run: bool = False) -> int:
     settings = project_dir / ".claude" / "settings.json"
-    settings.parent.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        settings.parent.mkdir(parents=True, exist_ok=True)
 
     existed = settings.exists()
     if existed:
@@ -98,6 +99,10 @@ def _merge_settings(project_dir: Path) -> int:
         print(f"settings: no changes (already up to date) {settings}")
         return 0
 
+    if dry_run:
+        print(f"[dry-run] would write {settings}")
+        return 0
+
     if existed:
         backup = settings.with_suffix(settings.suffix + ".bak")
         backup.write_text(raw, encoding="utf-8")
@@ -118,10 +123,11 @@ def _remove_existing(path: Path) -> None:
             path.unlink(missing_ok=True)
 
 
-def _install_link(project_dir: Path, force: bool) -> int:
+def _install_link(project_dir: Path, force: bool, dry_run: bool = False) -> int:
     """Install hooks as symlinks pointing to the installed package."""
     target = project_dir / ".claude" / "hooks"
-    target.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        target.mkdir(parents=True, exist_ok=True)
     for name in HOOK_FILES:
         src = PACKAGE_DIR / name
         dst = target / name
@@ -129,7 +135,11 @@ def _install_link(project_dir: Path, force: bool) -> int:
             if not force:
                 print(f"skip: {dst} already exists (use --force to overwrite)", file=sys.stderr)
                 continue
-            _remove_existing(dst)
+            if not dry_run:
+                _remove_existing(dst)
+        if dry_run:
+            print(f"[dry-run] would link {dst} -> {src}")
+            continue
         os.symlink(src, dst)
         print(f"linked: {dst} -> {src}")
 
@@ -139,22 +149,30 @@ def _install_link(project_dir: Path, force: bool) -> int:
         if not force:
             print(f"skip: {lib_dst} already exists (use --force to overwrite)", file=sys.stderr)
             return 0
-        _remove_existing(lib_dst)
+        if not dry_run:
+            _remove_existing(lib_dst)
+    if dry_run:
+        print(f"[dry-run] would link {lib_dst}/ -> {lib_src}/")
+        return 0
     os.symlink(lib_src, lib_dst, target_is_directory=True)
     print(f"linked: {lib_dst}/ -> {lib_src}/")
     return 0
 
 
-def _install_copy(project_dir: Path, force: bool) -> int:
+def _install_copy(project_dir: Path, force: bool, dry_run: bool = False) -> int:
     """Install hooks by copying files (portable fallback; what install used to do)."""
     target = project_dir / ".claude" / "hooks"
-    target.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        target.mkdir(parents=True, exist_ok=True)
 
     for name in HOOK_FILES:
         src = PACKAGE_DIR / name
         dst = target / name
         if dst.exists() and not force:
             print(f"skip: {dst} already exists (use --force to overwrite)", file=sys.stderr)
+            continue
+        if dry_run:
+            print(f"[dry-run] would copy {src} -> {dst}")
             continue
         _remove_existing(dst)
         shutil.copy2(src, dst)
@@ -166,17 +184,28 @@ def _install_copy(project_dir: Path, force: bool) -> int:
         if not force:
             print(f"skip: {lib_dst} already exists (use --force to overwrite)", file=sys.stderr)
             return 0
-        _remove_existing(lib_dst)
+        if not dry_run:
+            _remove_existing(lib_dst)
+    if dry_run:
+        print(f"[dry-run] would copy {lib_src}/ -> {lib_dst}/")
+        return 0
     shutil.copytree(lib_src, lib_dst, ignore=shutil.ignore_patterns("__pycache__"))
     print(f"installed: {lib_dst}/")
     return 0
 
 
-def install(project_dir: Path, force: bool, write_settings: bool = True, use_symlink: bool = True) -> int:
+def install(
+    project_dir: Path,
+    force: bool,
+    write_settings: bool = True,
+    use_symlink: bool = True,
+    dry_run: bool = False,
+) -> int:
     """Install hooks into <project>/.claude/hooks/.
 
     use_symlink=True: symlinks into the installed package (default). Auto-upgrades with `pip install -U`.
     use_symlink=False: copies files (portable, needs --force to re-deploy after package upgrade).
+    dry_run=True: print actions without writing any files.
     """
     # Windows auto-fallback.
     if use_symlink and IS_WINDOWS:
@@ -184,9 +213,9 @@ def install(project_dir: Path, force: bool, write_settings: bool = True, use_sym
         use_symlink = False
 
     if use_symlink:
-        rc = _install_link(project_dir, force)
+        rc = _install_link(project_dir, force, dry_run=dry_run)
     else:
-        rc = _install_copy(project_dir, force)
+        rc = _install_copy(project_dir, force, dry_run=dry_run)
     if rc != 0:
         return rc
 
@@ -195,7 +224,7 @@ def install(project_dir: Path, force: bool, write_settings: bool = True, use_sym
         print(_settings_snippet())
         return 0
 
-    return _merge_settings(project_dir)
+    return _merge_settings(project_dir, dry_run=dry_run)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -214,9 +243,11 @@ def main(argv: list[str] | None = None) -> int:
                       help="Skip automatic settings.json merge")
     inst.add_argument("--copy", dest="use_symlink", action="store_false", default=True,
                       help="Copy files instead of symlinking (portable but doesn't auto-update on package upgrade)")
+    inst.add_argument("--dry-run", action="store_true",
+                      help="Preview actions without writing files")
     args = parser.parse_args(argv)
     if args.command == "install":
-        return install(args.dir, args.force, args.write_settings, args.use_symlink)
+        return install(args.dir, args.force, args.write_settings, args.use_symlink, args.dry_run)
     return 1
 
 

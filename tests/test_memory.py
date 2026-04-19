@@ -70,6 +70,13 @@ def test_append_trace_writes_jsonl_with_timestamp(tmp_path):
         assert "hook" in event
 
 
+def test_append_trace_disabled_by_env_var(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_SMART_COMPACT_TRACE", "0")
+    trace = tmp_path / "trace.jsonl"
+    memory.append_trace(trace, {"hook": "Test"})
+    assert not trace.exists()
+
+
 def test_read_preferences_returns_none_when_file_missing(tmp_path):
     assert memory.read_preferences_section(tmp_path / "nope.md") is None
 

@@ -42,4 +42,4 @@ claude_smart_compact = ["*.py"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-v --tb=short"
+addopts = "--tb=short"

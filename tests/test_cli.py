@@ -217,6 +217,35 @@ def test_install_invalid_existing_settings_errors_without_writing(tmp_path, caps
     assert "invalid" in captured.err.lower() or "parse" in captured.err.lower()
 
 
+# ============== Package re-export ==============
+
+def test_install_importable_from_package_root():
+    from claude_smart_compact import install as pkg_install
+    assert callable(pkg_install)
+    assert pkg_install is cli.install
+
+
+# ============== --dry-run tests ==============
+
+def test_install_dry_run(tmp_path):
+    rc = cli.install(tmp_path, force=False, write_settings=True, use_symlink=True, dry_run=True)
+    assert rc == 0
+    hooks_dir = tmp_path / ".claude" / "hooks"
+    # Nothing should have been written.
+    assert not (hooks_dir / "pre_compact.py").exists()
+    assert not (hooks_dir / "user_prompt.py").exists()
+    assert not (hooks_dir / "lib").exists()
+    assert not (tmp_path / ".claude" / "settings.json").exists()
+
+
+def test_install_dry_run_cli_flag(tmp_path, capsys):
+    rc = cli.main(["install", "--dir", str(tmp_path), "--dry-run", "--no-settings"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "[dry-run]" in captured.out
+    assert not (tmp_path / ".claude/hooks/pre_compact.py").exists()
+
+
 # ============== Windows fallback (mocked) ==============
 
 def test_install_on_windows_falls_back_to_copy(tmp_path, monkeypatch, capsys):

@@ -76,7 +76,7 @@ python3 tests/trace_run.py tests/fixtures/transcript_with_todos.jsonl
 
 ```bash
 pip install -e ".[dev]"
-pytest --cov=hooks
+pytest --cov=claude_smart_compact
 ```
 
 ## Debug
