@@ -7,6 +7,7 @@ from typing import Optional
 from .transcript import Message, TodoItem, is_skippable_user_turn
 
 MAX_BULLET_LEN = 120
+MAX_IN_FLIGHT = 30
 DEFAULT_PREFS_BODY = "_(none yet)_\n"
 
 
@@ -44,6 +45,12 @@ def _render_in_flight(in_flight: list[Message]) -> str:
                 if isinstance(block, dict) and block.get("type") == "tool_use":
                     bullets.append(f"- tool: {block.get('name', '?')}")
                     break
+    if len(bullets) > MAX_IN_FLIGHT:
+        trimmed_count = len(bullets) - MAX_IN_FLIGHT
+        bullets = [
+            f"- _(… {trimmed_count} older in-flight turns trimmed)_",
+            *bullets[-MAX_IN_FLIGHT:],
+        ]
     return "\n".join(bullets) if bullets else "_(no in-flight turns)_"
 
 

@@ -193,6 +193,20 @@ def test_render_in_flight_filters_cli_injected_user_turns():
     assert "tool result output" not in md  # filtered
 
 
+def test_render_in_flight_caps_bullets_at_max():
+    msgs = [_msg("assistant", f"turn {i}", i) for i in range(50)]
+    rendered = core._render_in_flight(msgs)
+    lines = rendered.split("\n")
+    assert lines[0] == "- _(… 20 older in-flight turns trimmed)_"
+    assert len(lines) == 31
+
+
+def test_render_in_flight_no_truncation_marker_when_under_cap():
+    msgs = [_msg("assistant", f"turn {i}", i) for i in range(10)]
+    rendered = core._render_in_flight(msgs)
+    assert "older in-flight turns trimmed" not in rendered
+
+
 def test_render_in_flight_keeps_slash_command_with_args():
     """Slash commands WITH args carry task intent — keep them in bullets."""
     m = Message(
