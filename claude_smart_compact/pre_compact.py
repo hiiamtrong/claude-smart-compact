@@ -9,16 +9,7 @@ from pathlib import Path
 # Make `lib` importable when invoked directly by the CLI or deployed to .claude/hooks/.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import core, memory, transcript  # noqa: E402
-
-
-def _safe_trace(project_root: Path, session_id: str | None, event: dict) -> None:
-    if not session_id:
-        return
-    try:
-        memory.append_trace(memory.trace_path(project_root, session_id), event)
-    except Exception:
-        pass
+from lib import core, hook_runner, memory, transcript  # noqa: E402
 
 
 def main(payload: dict) -> None:
@@ -32,7 +23,7 @@ def main(payload: dict) -> None:
     last_user_idx = scan.last_user_idx
 
     if last_user_idx is None:
-        _safe_trace(root, session_id, {
+        hook_runner.safe_trace(root, session_id, {
             "hook": "PreCompact",
             "trigger": trigger,
             "messages_count": len(messages),
@@ -57,7 +48,7 @@ def main(payload: dict) -> None:
         existing_preferences_section=existing_prefs,
     )
     memory.write_atomic(mem_file, md)
-    _safe_trace(root, session_id, {
+    hook_runner.safe_trace(root, session_id, {
         "hook": "PreCompact",
         "trigger": trigger,
         "messages_count": len(messages),
@@ -74,25 +65,4 @@ def main(payload: dict) -> None:
 
 
 if __name__ == "__main__":
-    payload: dict = {}
-    try:
-        payload = json.load(sys.stdin)
-    except Exception:
-        # stdin itself is malformed — no session_id to correlate with.
-        json.dump({}, sys.stdout)
-        sys.exit(0)
-    try:
-        main(payload)
-    except Exception as e:
-        try:
-            root = memory.find_project_root(Path.cwd())
-            session_id = payload.get("session_id") if isinstance(payload, dict) else None
-            _safe_trace(root, session_id, {
-                "hook": "PreCompact",
-                "error": str(e),
-                "error_type": type(e).__name__,
-            })
-        except Exception:
-            pass
-        json.dump({}, sys.stdout)
-        sys.exit(0)
+    hook_runner.run_hook(main, "PreCompact")
