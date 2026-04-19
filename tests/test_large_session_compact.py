@@ -256,6 +256,223 @@ def test_compact_on_simulated_1m_token_session(project_root, tmp_path):
     assert trace_events[1]["pointer_injected"] is True
 
 
+def _write_post_compact_transcript(path: Path, target_bytes: int) -> dict:
+    """Simulate the transcript state AFTER a first auto-compact: the old
+    conversation is replaced with a short synthetic summary message, then the
+    session continues with a brand-new user prompt, new work, and a new
+    TodoWrite snapshot.
+
+    This is how Claude Code's auto-compact leaves the transcript — earlier
+    turns collapse into a summary, session_id persists, and new activity gets
+    appended to the same file.
+    """
+    new_active_task = "now add rate limiting to the /charge endpoint"
+    new_todos = [
+        {"content": "identify hot paths in charge handler", "status": "completed",
+         "activeForm": "Identifying hot paths"},
+        {"content": "pick rate-limit algorithm (token bucket vs. sliding window)",
+         "status": "in_progress",
+         "activeForm": "Picking rate-limit algorithm"},
+        {"content": "wire redis-backed limiter middleware",
+         "status": "pending",
+         "activeForm": "Wiring redis-backed limiter middleware"},
+    ]
+
+    written = 0
+    lines: list[str] = []
+
+    def emit(obj: dict) -> None:
+        nonlocal written
+        s = json.dumps(obj, ensure_ascii=False) + "\n"
+        lines.append(s)
+        written += len(s.encode("utf-8"))
+
+    # 1. Post-compact synthetic summary (what CC injects after auto-compact).
+    emit({
+        "type": "user",
+        "message": {"role": "user", "content":
+            "[compact-summary] Earlier: refactored payments for idempotency; "
+            "schema + charge endpoint done; integration tests pending."},
+        "uuid": "u-summary",
+    })
+    # Assistant acknowledges the compact
+    emit({
+        "type": "assistant",
+        "message": {"role": "assistant", "content":
+            "Resuming from compact. Read memory file for prior todos + prefs."},
+        "uuid": "a-resume",
+    })
+
+    # 2. The new user prompt (the new Active Task).
+    emit({
+        "type": "user",
+        "message": {"role": "user", "content": new_active_task},
+        "uuid": "u-new",
+    })
+
+    # 3. New assistant work — bulk filler until we cross target_bytes again.
+    i = 0
+    while written < target_bytes - 8_000:
+        i += 1
+        emit({
+            "type": "assistant",
+            "message": {"role": "assistant",
+                        "content": FILLER_CHUNK + f" [rl step {i}]"},
+            "uuid": f"rl-a{i}",
+        })
+        emit({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": f"rl-t{i}", "name": "Bash",
+                 "input": {"command": f"redis-cli INFO memory | grep peak_{i % 10}"}},
+            ]},
+            "uuid": f"rl-a{i}-t",
+        })
+        emit({
+            "type": "user",
+            "toolUseResult": {"stdout": "ok", "exitCode": 0},
+            "message": {"role": "user", "content": [
+                {"tool_use_id": f"rl-t{i}", "type": "tool_result",
+                 "content": "used_memory_peak: 12MB"},
+            ]},
+            "uuid": f"rl-u{i}-tr",
+        })
+
+    # 4. New TodoWrite snapshot — the one the 2nd compact must pick up.
+    emit({
+        "type": "assistant",
+        "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "rl-td", "name": "TodoWrite",
+             "input": {"todos": new_todos}},
+        ]},
+        "uuid": "rl-a-todo",
+    })
+    emit({
+        "type": "assistant",
+        "message": {"role": "assistant",
+                    "content": "context limit hit again — recompacting"},
+        "uuid": "rl-a-final",
+    })
+
+    path.write_text("".join(lines), encoding="utf-8")
+    return {
+        "new_active_task": new_active_task,
+        "new_todos": new_todos,
+        "bytes": written,
+        "assistant_loops": i,
+    }
+
+
+@pytest.mark.slow
+def test_compact_twice_in_same_session_persists_across_both_rounds(project_root, tmp_path):
+    """Simulate two full compact cycles in the same session.
+
+    Timeline:
+      1. Session A runs to ~4MB transcript with 'refactor payments' active task.
+      2. PreCompact #1 writes memory.md v1.
+      3. Agent appends a user preference (agent-authored behavior).
+      4. UserPromptSubmit fires on next user turn — pointer injected.
+      5. Session continues (compact summary + new prompt + new TodoWrite + more work)
+         until hitting context limit again (~4MB again).
+      6. PreCompact #2 writes memory.md v2 — OVERWRITING the snapshot fields
+         but keeping the agent-authored Preferences line.
+
+    Asserts that each round captures the correct Active Task + todos, and
+    that cross-round state (preferences, trace ledger) accumulates correctly.
+    """
+    session_id = "two-compact-sim"
+    mem_file = project_root / ".claude" / "compact-memory" / f"{session_id}.md"
+    trace_file = project_root / ".claude" / "compact-memory" / f"{session_id}.trace.jsonl"
+
+    # --- Round 1: first compact ------------------------------------------
+    tx1 = tmp_path / "round1.jsonl"
+    r1 = _write_large_transcript(tx1, TARGET_TRANSCRIPT_BYTES)
+
+    r1_result = _run("pre_compact.py", {
+        "session_id": session_id,
+        "transcript_path": str(tx1),
+        "hook_event_name": "PreCompact",
+        "trigger": "auto",
+    }, project_root)
+    assert r1_result.returncode == 0, r1_result.stderr
+    assert mem_file.exists()
+
+    v1 = mem_file.read_text(encoding="utf-8")
+    assert r1["active_task"] in v1
+    assert "design idempotency key schema" in v1
+    assert "wire key into charge endpoint" in v1
+    assert "add integration tests" in v1
+    v1_size = mem_file.stat().st_size
+    assert v1_size < 100_000
+
+    # --- Agent appends a preference between compacts ---------------------
+    v1_with_pref = v1.replace(
+        "## Preferences\n_(none yet)_",
+        "## Preferences\n- always run `pytest --cov` before commit\n"
+        "- feature-flag any new middleware",
+    )
+    mem_file.write_text(v1_with_pref, encoding="utf-8")
+
+    # --- UserPromptSubmit fires on the first prompt post-compact ---------
+    up = _run("user_prompt.py", {
+        "session_id": session_id,
+        "hook_event_name": "UserPromptSubmit",
+        "prompt": "now add rate limiting",
+    }, project_root)
+    assert up.returncode == 0
+    assert session_id in json.loads(up.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    # --- Round 2: session continued, hit limit again ---------------------
+    tx2 = tmp_path / "round2.jsonl"
+    r2 = _write_post_compact_transcript(tx2, TARGET_TRANSCRIPT_BYTES)
+    assert r2["bytes"] >= TARGET_TRANSCRIPT_BYTES - 1_000_000
+
+    r2_result = _run("pre_compact.py", {
+        "session_id": session_id,
+        "transcript_path": str(tx2),
+        "hook_event_name": "PreCompact",
+        "trigger": "auto",
+    }, project_root)
+    assert r2_result.returncode == 0, r2_result.stderr
+
+    v2 = mem_file.read_text(encoding="utf-8")
+
+    # Active Task refreshed to the NEW prompt (old one is gone from snapshot fields).
+    assert r2["new_active_task"] in v2
+    assert r1["active_task"] not in v2, (
+        "v2 still references round-1 active task — snapshot fields not refreshed"
+    )
+
+    # Todos refreshed to the new snapshot; old round-1 todos are NOT in v2.
+    assert "pick rate-limit algorithm" in v2
+    assert "wire redis-backed limiter middleware" in v2
+    assert "design idempotency key schema" not in v2
+    assert "wire key into charge endpoint" not in v2
+
+    # Preferences the agent authored between rounds SURVIVE.
+    assert "always run `pytest --cov` before commit" in v2
+    assert "feature-flag any new middleware" in v2
+
+    # Memory size stays bounded across rounds (doesn't accumulate transcripts).
+    assert mem_file.stat().st_size < 100_000, (
+        f"memory file ballooned to {mem_file.stat().st_size} B across rounds"
+    )
+
+    # --- Trace ledger accumulates all three hook runs --------------------
+    events = [json.loads(ln) for ln in trace_file.read_text().splitlines() if ln.strip()]
+    assert [e["hook"] for e in events] == [
+        "PreCompact",
+        "UserPromptSubmit",
+        "PreCompact",
+    ]
+    # Round 1 wrote first snapshot; round 2 saw the preserved preferences.
+    assert events[0]["preserved_preferences"] is False
+    assert events[2]["preserved_preferences"] is True
+    # Todos_count reflects in_progress + pending per round.
+    assert events[0]["todos_count"] == 3  # round 1: 2 in_progress + 1 pending
+    assert events[2]["todos_count"] == 2  # round 2: 1 in_progress + 1 pending
+
+
 @pytest.mark.slow
 def test_compact_preserves_preferences_across_1m_session(project_root, tmp_path):
     """Re-running PreCompact on the same session must keep a user-authored
