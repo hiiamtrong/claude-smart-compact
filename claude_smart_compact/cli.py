@@ -43,7 +43,8 @@ def _merge_settings(project_dir: Path) -> int:
     settings = project_dir / ".claude" / "settings.json"
     settings.parent.mkdir(parents=True, exist_ok=True)
 
-    if settings.exists():
+    existed = settings.exists()
+    if existed:
         raw = settings.read_text(encoding="utf-8")
         try:
             data = json.loads(raw)
@@ -55,10 +56,10 @@ def _merge_settings(project_dir: Path) -> int:
         if not isinstance(data, dict):
             print(f"error: {settings} is not a JSON object", file=sys.stderr)
             return 1
-        backup = settings.with_suffix(settings.suffix + ".bak")
-        backup.write_text(raw, encoding="utf-8")
     else:
         data = {}
+
+    before = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
     hooks = data.setdefault("hooks", {})
     for event_name, entry in [("PreCompact", PRE_COMPACT_ENTRY), ("UserPromptSubmit", USER_PROMPT_ENTRY)]:
@@ -71,8 +72,17 @@ def _merge_settings(project_dir: Path) -> int:
         if not already:
             bucket.append(entry)
 
+    after = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    if existed and before == after:
+        print(f"settings: no changes (already up to date) {settings}")
+        return 0
+
+    if existed:
+        backup = settings.with_suffix(settings.suffix + ".bak")
+        backup.write_text(raw, encoding="utf-8")
+
     tmp = settings.with_suffix(settings.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.write_text(after, encoding="utf-8")
     os.replace(tmp, settings)
     print(f"settings: merged {settings}")
     return 0
