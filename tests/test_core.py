@@ -119,7 +119,7 @@ def test_compose_preserves_existing_preferences():
     assert "always use pnpm" in tail
     assert "never mock DB" in tail
     # Placeholder should NOT appear when existing prefs provided.
-    assert "never rewrite existing entries" not in tail
+    assert "_(none yet)_" not in tail
 
 
 def test_prompt_pointer_has_session_id_and_size():

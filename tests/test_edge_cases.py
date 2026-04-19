@@ -80,7 +80,7 @@ def test_e5_memory_without_prefs_gets_placeholder(project_root, fixtures_dir):
     }
     _run("pre_compact.py", payload, project_root)
     content = mem.read_text()
-    assert "never rewrite existing entries" in content
+    assert "_(none yet)_" in content
 
 
 # E6: Memory file exists with ## Preferences populated

@@ -7,10 +7,7 @@ from typing import Optional
 from .transcript import Message, TodoItem, is_skippable_user_turn
 
 MAX_BULLET_LEN = 120
-DEFAULT_PREFS_BODY = (
-    "_Append lasting preferences/constraints stated by the user here.\n"
-    "Agent: use Edit tool to append; never rewrite existing entries._\n"
-)
+DEFAULT_PREFS_BODY = "_(none yet)_\n"
 
 
 def _quote_block(text: str) -> str:
