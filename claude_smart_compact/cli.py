@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -32,11 +33,23 @@ PRE_COMPACT_ENTRY = {"hooks": [{"type": "command", "command": "python3 .claude/h
 USER_PROMPT_ENTRY = {"hooks": [{"type": "command", "command": "python3 .claude/hooks/user_prompt.py"}]}
 
 
+_HOOK_SCRIPT_RE = re.compile("|".join(re.escape(n) for n in HOOK_FILES))
+
+
 def _entry_command(entry: dict) -> str | None:
     try:
         return entry["hooks"][0]["command"]
     except (KeyError, IndexError, TypeError):
         return None
+
+
+def _entry_hook_script(entry: dict) -> str | None:
+    """Extract the hook script filename (interpreter-agnostic identity)."""
+    cmd = _entry_command(entry)
+    if not cmd:
+        return None
+    m = _HOOK_SCRIPT_RE.search(cmd)
+    return m.group(0) if m else None
 
 
 def _merge_settings(project_dir: Path) -> int:
@@ -66,8 +79,8 @@ def _merge_settings(project_dir: Path) -> int:
         if not isinstance(bucket, list):
             print(f"error: {settings} hooks.{event_name} is not a list", file=sys.stderr)
             return 1
-        cmd = _entry_command(entry)
-        already = any(_entry_command(existing) == cmd for existing in bucket)
+        script = _entry_hook_script(entry)
+        already = any(_entry_hook_script(existing) == script for existing in bucket)
         if not already:
             bucket.append(entry)
 

@@ -156,6 +156,23 @@ def test_install_is_idempotent_on_settings(tmp_path):
     assert len(data["hooks"]["UserPromptSubmit"]) == 1
 
 
+def test_install_deduplicates_hook_entries_across_interpreter_variants(tmp_path):
+    """Pre-existing entry using `python` (not `python3`) must not yield a duplicate."""
+    settings = tmp_path / ".claude/settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    existing_cmd = "python .claude/hooks/pre_compact.py"
+    settings.write_text(json.dumps({
+        "hooks": {
+            "PreCompact": [{"hooks": [{"type": "command", "command": existing_cmd}]}],
+        },
+    }))
+    cli.install(tmp_path, force=False)
+    data = json.loads(settings.read_text())
+    assert len(data["hooks"]["PreCompact"]) == 1
+    # Existing entry should be preserved, not overwritten.
+    assert data["hooks"]["PreCompact"][0]["hooks"][0]["command"] == existing_cmd
+
+
 def test_install_backs_up_existing_settings(tmp_path):
     settings = tmp_path / ".claude/settings.json"
     settings.parent.mkdir(parents=True, exist_ok=True)
