@@ -1,1 +1,1 @@
-/opt/homebrew/lib/python3.11/site-packages/claude_smart_compact/pre_compact.py
+../../claude_smart_compact/pre_compact.py
