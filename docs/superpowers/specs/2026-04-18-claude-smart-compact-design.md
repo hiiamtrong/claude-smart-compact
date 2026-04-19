@@ -171,7 +171,7 @@ _From the last user prompt in this session._
 - {for each turn: first non-empty line of content, truncated to 120 chars; tool calls rendered as `tool: <name>`}
 - ...
 
-## In-Progress Todos
+## Open Todos
 - [ ] {todo.content} (status: in_progress)
 - [ ] {todo.content} (status: pending)
 

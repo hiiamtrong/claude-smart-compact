@@ -10,6 +10,28 @@ MAX_BULLET_LEN = 120
 MAX_IN_FLIGHT = 30
 DEFAULT_PREFS_BODY = "_(none yet)_\n"
 
+# Priority order of input keys likely to summarize a tool call.
+# Works across built-in tools, MCP tools, and plugin tools that follow
+# common naming conventions. Falls back to the first short string value.
+_SIGNATURE_KEY_PRIORITY = (
+    "command", "file_path", "path", "pattern",
+    "url", "query", "description", "prompt",
+)
+
+
+def _tool_signature(tool_input: dict) -> str:
+    """Return a short summary of a tool_use call (e.g. 'git push origin main')."""
+    if not isinstance(tool_input, dict):
+        return ""
+    for key in _SIGNATURE_KEY_PRIORITY:
+        val = tool_input.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip().splitlines()[0]
+    for val in tool_input.values():
+        if isinstance(val, str) and val.strip() and len(val) < 200:
+            return val.strip().splitlines()[0]
+    return ""
+
 
 def _quote_block(text: str) -> str:
     if not text:
@@ -36,7 +58,10 @@ def _render_in_flight(in_flight: list[Message]) -> str:
         # No text content — try to render a tool_use bullet
         for block in msg.content_blocks:
             if block.get("type") == "tool_use":
-                bullets.append(f"- tool: {block.get('name', '?')}")
+                name = block.get("name", "?")
+                sig = _tool_signature(block.get("input", {}))
+                label = f"tool: {name} ({sig})" if sig else f"tool: {name}"
+                bullets.append(f"- {_truncate(label, MAX_BULLET_LEN)}")
                 break
     if len(bullets) > MAX_IN_FLIGHT:
         trimmed_count = len(bullets) - MAX_IN_FLIGHT
@@ -81,7 +106,7 @@ def compose_memory_markdown(
         f"**In-flight turns (since last user prompt):**\n"
         f"{_render_in_flight(in_flight)}\n"
         f"\n"
-        f"## In-Progress Todos\n"
+        f"## Open Todos\n"
         f"{_render_todos(todos)}\n"
         f"\n"
         f"## Preferences\n"

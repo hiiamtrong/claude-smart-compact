@@ -19,7 +19,7 @@ def test_compose_contains_all_required_headings():
     assert "# Session Memory" in md
     assert "session_id: sid-1" in md
     assert "## Active Task" in md
-    assert "## In-Progress Todos" in md
+    assert "## Open Todos" in md
     assert "## Preferences" in md
 
 
@@ -149,6 +149,45 @@ def test_compose_renders_tool_use_as_bullet():
         existing_preferences_section=None,
     )
     assert "- tool: Bash" in md
+
+
+def test_compose_renders_tool_use_with_signature():
+    """tool_use bullets should show the key input arg (bash command, file path, etc.)."""
+    blocks = [
+        {"type": "tool_use", "name": "Bash", "input": {"command": "git push origin main"}},
+        {"type": "tool_use", "name": "Edit", "input": {"file_path": "src/app.py"}},
+        {"type": "tool_use", "name": "Grep", "input": {"pattern": "TODO"}},
+    ]
+    in_flight = [
+        Message(role="assistant", content="", raw={}, index=i, content_blocks=[b])
+        for i, b in enumerate(blocks)
+    ]
+    md = core.compose_memory_markdown(
+        session_id="sid",
+        active_task_user_msg="task",
+        in_flight=in_flight,
+        todos=[],
+        existing_preferences_section=None,
+    )
+    assert "- tool: Bash (git push origin main)" in md
+    assert "- tool: Edit (src/app.py)" in md
+    assert "- tool: Grep (TODO)" in md
+
+
+def test_compose_renders_multiline_bash_first_line_only():
+    blocks = [{"type": "tool_use", "name": "Bash", "input": {"command": "echo a\necho b"}}]
+    in_flight = [
+        Message(role="assistant", content="", raw={}, index=1, content_blocks=blocks)
+    ]
+    md = core.compose_memory_markdown(
+        session_id="sid",
+        active_task_user_msg="task",
+        in_flight=in_flight,
+        todos=[],
+        existing_preferences_section=None,
+    )
+    assert "- tool: Bash (echo a)" in md
+    assert "echo b" not in md
 
 
 def test_render_in_flight_filters_cli_injected_user_turns():

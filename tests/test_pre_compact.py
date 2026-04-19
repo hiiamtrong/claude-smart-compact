@@ -37,7 +37,7 @@ def test_pre_compact_happy_path(project_root, fixtures_dir):
     content = mem.read_text()
     assert "## Active Task" in content
     assert "refactor auth module" in content
-    assert "## In-Progress Todos" in content
+    assert "## Open Todos" in content
     assert "add tests" in content
 
     trace = project_root / ".claude" / "compact-memory" / "sid-happy.trace.jsonl"
@@ -67,7 +67,7 @@ def test_pre_compact_preserves_preferences_on_second_run(project_root, fixtures_
     mem_dir.mkdir(parents=True, exist_ok=True)
     (mem_dir / "sid-x.md").write_text(
         "# Session Memory\n\n## Active Task\n> old\n\n"
-        "## In-Progress Todos\n_(none)_\n\n"
+        "## Open Todos\n_(none)_\n\n"
         "## Preferences\n- never mock DB\n"
     )
     payload = {
