@@ -72,6 +72,42 @@ def test_extract_latest_todos_returns_most_recent_snapshot(copy_fixture):
     assert todos[2].status == "in_progress"
 
 
+def _todo_write_msg(index: int, todos: list[dict]) -> transcript.Message:
+    """Build a Message with a TodoWrite tool_use block in synthetic-test format."""
+    raw = {
+        "role": "assistant",
+        "content": [
+            {
+                "type": "tool_use",
+                "name": "TodoWrite",
+                "input": {"todos": todos},
+            }
+        ],
+    }
+    return transcript.Message(role="assistant", content="", raw=raw, index=index)
+
+
+def test_extract_latest_todos_empty_clears():
+    """An empty TodoWrite is a user-intended clear: latest wins, even when empty."""
+    messages = [
+        _todo_write_msg(0, [
+            {"content": "a", "status": "pending"},
+            {"content": "b", "status": "in_progress"},
+            {"content": "c", "status": "completed"},
+        ]),
+        _todo_write_msg(1, []),  # later clear
+    ]
+    assert transcript.extract_latest_todos(messages) == []
+
+
+def test_extract_latest_todos_no_todo_tool_returns_empty():
+    messages = [
+        transcript.Message(role="user", content="hi", raw={}, index=0),
+        transcript.Message(role="assistant", content="ok", raw={}, index=1),
+    ]
+    assert transcript.extract_latest_todos(messages) == []
+
+
 def test_parse_jsonl_skips_corrupt_lines(copy_fixture):
     path = copy_fixture("transcript_corrupt_lines.jsonl")
     messages = transcript.parse_jsonl(str(path))

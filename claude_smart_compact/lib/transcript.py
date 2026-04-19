@@ -235,6 +235,5 @@ def extract_latest_todos(messages: list[Message]) -> list[TodoItem]:
                 if status not in ("pending", "in_progress", "completed"):
                     status = "pending"
                 parsed.append(TodoItem(content=content, status=status))
-            if parsed:
-                latest = parsed  # later wins
+            latest = parsed  # later wins (empty list clears todos)
     return latest
