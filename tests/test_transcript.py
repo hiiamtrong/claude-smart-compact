@@ -108,6 +108,22 @@ def test_extract_latest_todos_no_todo_tool_returns_empty():
     assert transcript.extract_latest_todos(messages) == []
 
 
+def test_parse_jsonl_populates_content_blocks(copy_fixture):
+    path = copy_fixture("transcript_with_todos.jsonl")
+    messages = transcript.parse_jsonl(str(path))
+    # First message: plain string content -> no content blocks.
+    assert messages[0].content_blocks == []
+    # Second message: list with a single tool_use block.
+    assert len(messages[1].content_blocks) == 1
+    assert messages[1].content_blocks[0]["type"] == "tool_use"
+    assert messages[1].content_blocks[0]["name"] == "TodoWrite"
+    # Third message: plain string again -> no content blocks.
+    assert messages[2].content_blocks == []
+    # Fourth message: another tool_use block.
+    assert len(messages[3].content_blocks) == 1
+    assert messages[3].content_blocks[0]["type"] == "tool_use"
+
+
 def test_parse_jsonl_skips_corrupt_lines(copy_fixture):
     path = copy_fixture("transcript_corrupt_lines.jsonl")
     messages = transcript.parse_jsonl(str(path))
@@ -237,19 +253,23 @@ def test_active_task_text_returns_empty_for_meta_slash_command():
 
 def _tool_result_msg(index: int, has_toolUseResult: bool = True, content_list: bool = True):
     """Construct a Message that looks like a Claude Code tool-result envelope."""
+    blocks = [{"tool_use_id": "tool_x", "type": "tool_result", "content": "ran some command"}]
     raw = {
         "type": "user",
         "message": {
             "role": "user",
-            "content": (
-                [{"tool_use_id": "tool_x", "type": "tool_result", "content": "ran some command"}]
-                if content_list else "ran some command"
-            ),
+            "content": blocks if content_list else "ran some command",
         },
     }
     if has_toolUseResult:
         raw["toolUseResult"] = {"stdout": "...", "exitCode": 0}
-    return transcript.Message(role="user", content="ran some command", raw=raw, index=index)
+    return transcript.Message(
+        role="user",
+        content="ran some command",
+        raw=raw,
+        index=index,
+        content_blocks=blocks if content_list else [],
+    )
 
 
 def test_find_last_user_skips_tool_result_with_toolUseResult_key():
@@ -274,18 +294,18 @@ def test_find_last_user_skips_tool_result_when_content_is_all_tool_result_blocks
 
 def test_find_last_user_keeps_message_with_mixed_content_blocks():
     """A user message whose content list contains text (not just tool_result) is real."""
+    blocks = [
+        {"type": "text", "text": "please do X"},
+        {"type": "tool_result", "content": "some result"},
+    ]
     raw = {
         "type": "user",
-        "message": {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "please do X"},
-                {"type": "tool_result", "content": "some result"},
-            ],
-        },
+        "message": {"role": "user", "content": blocks},
     }
     msgs = [
-        transcript.Message(role="user", content="please do X", raw=raw, index=0),
+        transcript.Message(
+            role="user", content="please do X", raw=raw, index=0, content_blocks=blocks,
+        ),
     ]
     assert transcript.find_last_user_index(msgs) == 0
 
@@ -362,11 +382,13 @@ def test_find_last_user_keeps_user_text_that_quotes_a_marker():
 
 
 def test_is_skippable_user_turn_on_cli_injected():
+    blocks = [{"type": "tool_result", "content": "ok"}]
     msg = transcript.Message(
         role="user",
         content="tool result output",
-        raw={"toolUseResult": {"exitCode": 0}, "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}},
+        raw={"toolUseResult": {"exitCode": 0}, "message": {"role": "user", "content": blocks}},
         index=0,
+        content_blocks=blocks,
     )
     assert transcript.is_skippable_user_turn(msg) is True
 

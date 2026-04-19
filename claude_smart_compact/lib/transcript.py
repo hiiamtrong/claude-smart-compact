@@ -54,6 +54,7 @@ class Message:
     content: str
     raw: dict = field(default_factory=dict)
     index: int = 0
+    content_blocks: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -116,7 +117,20 @@ def parse_jsonl(path: str) -> list[Message]:
                 raw_content = raw.get("content", "")
 
             content = _flatten_content(raw_content)
-            messages.append(Message(role=role, content=content, raw=raw, index=idx))
+            content_blocks = (
+                [b for b in raw_content if isinstance(b, dict)]
+                if isinstance(raw_content, list)
+                else []
+            )
+            messages.append(
+                Message(
+                    role=role,
+                    content=content,
+                    raw=raw,
+                    index=idx,
+                    content_blocks=content_blocks,
+                )
+            )
             idx += 1
     return messages
 
@@ -138,18 +152,9 @@ def _is_cli_injected_message(msg: "Message") -> bool:
     if isinstance(raw, dict) and "toolUseResult" in raw:
         return True
     # Signal 2: content is a list of tool_result blocks only
-    msg_obj = raw.get("message") if isinstance(raw, dict) else None
-    content = None
-    if isinstance(msg_obj, dict):
-        content = msg_obj.get("content")
-    if content is None and isinstance(raw, dict):
-        content = raw.get("content")
-    if isinstance(content, list) and len(content) > 0:
-        if all(
-            isinstance(b, dict) and b.get("type") == "tool_result"
-            for b in content
-        ):
-            return True
+    blocks = msg.content_blocks
+    if blocks and all(b.get("type") == "tool_result" for b in blocks):
+        return True
     # Signal 3: plain-string content wrapped in local-command markers.
     text = msg.content or ""
     stripped = text.lstrip()
@@ -199,18 +204,8 @@ def slice_in_flight(messages: list[Message], from_index: Optional[int]) -> list[
 
 
 def _message_content_blocks(msg: Message) -> list[dict]:
-    """Return list content blocks from a Message's raw payload (handles both formats)."""
-    raw = msg.raw
-    # Real CLI format: content is nested in message.content
-    if isinstance(raw.get("message"), dict):
-        content = raw["message"].get("content")
-        if isinstance(content, list):
-            return [b for b in content if isinstance(b, dict)]
-    # Synthetic test format: content is at top level
-    content = raw.get("content")
-    if isinstance(content, list):
-        return [b for b in content if isinstance(b, dict)]
-    return []
+    """Return cached list content blocks from a Message."""
+    return msg.content_blocks
 
 
 def _has_todowrite_block(msg: Message) -> bool:

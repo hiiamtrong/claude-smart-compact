@@ -131,12 +131,14 @@ def test_prompt_pointer_has_session_id_and_size():
 
 
 def test_compose_renders_tool_use_as_bullet():
+    blocks = [{"type": "tool_use", "name": "Bash", "input": {}}]
     in_flight = [
         Message(
             role="assistant",
             content="",
-            raw={"content": [{"type": "tool_use", "name": "Bash", "input": {}}]},
+            raw={"content": blocks},
             index=1,
+            content_blocks=blocks,
         )
     ]
     md = core.compose_memory_markdown(
