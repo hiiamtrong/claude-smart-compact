@@ -93,10 +93,7 @@ def prompt_pointer_text(session_id: str, memory_size_bytes: int) -> str:
     """Pointer injected via UserPromptSubmit `additionalContext`."""
     size_kb = max(1, round(memory_size_bytes / 1024))
     return (
-        f"Persistent session memory available at "
-        f"`.claude/compact-memory/{session_id}.md` (~{size_kb}KB). "
-        f"Read it at the start of your next action if you need context about "
-        f"task state, in-progress todos, or user preferences. "
-        f"If the user states a lasting preference or constraint, "
-        f"append it under the `## Preferences` section using the Edit tool."
+        f"Memory: `.claude/compact-memory/{session_id}.md` (~{size_kb}KB). "
+        f"Read for prior task/todo/preference context. "
+        f"Append preferences to `## Preferences` (Edit tool)."
     )
