@@ -1,4 +1,4 @@
-# Claude Smart Compact
+# cc-compact
 
 Two Claude Code CLI hooks that preserve task state, in-progress todos, and
 user preferences across auto-compaction, without bloating the context window.
@@ -60,6 +60,7 @@ your project's `.claude/hooks/` directly. The deployed layout is:
 ├── user_prompt.py
 └── lib/
     ├── core.py
+    ├── hook_runner.py
     ├── memory.py
     └── transcript.py
 ```
