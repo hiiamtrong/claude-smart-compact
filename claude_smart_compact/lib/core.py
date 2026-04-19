@@ -19,6 +19,10 @@ def _quote_block(text: str) -> str:
     return "\n".join("> " + line for line in text.splitlines())
 
 
+def _truncate(s: str, limit: int) -> str:
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
 def _render_in_flight(in_flight: list[Message]) -> str:
     bullets: list[str] = []
     for msg in in_flight:
@@ -29,7 +33,7 @@ def _render_in_flight(in_flight: list[Message]) -> str:
             (ln for ln in (msg.content or "").splitlines() if ln.strip()), ""
         )
         if first_line:
-            bullets.append(f"- {first_line[:MAX_BULLET_LEN]}")
+            bullets.append(f"- {_truncate(first_line, MAX_BULLET_LEN)}")
             continue
         # No text content — try to render a tool_use bullet
         raw = msg.raw
