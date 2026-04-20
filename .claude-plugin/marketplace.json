@@ -1,0 +1,14 @@
+{
+  "name": "cc-compact",
+  "owner": {
+    "name": "hiiamtrong",
+    "email": "hiiamtrong@users.noreply.github.com"
+  },
+  "plugins": [
+    {
+      "name": "cc-compact",
+      "source": "./",
+      "description": "Claude Code hooks that preserve task state, in-progress todos, and user preferences across auto-compaction — without bloating the context window."
+    }
+  ]
+}
