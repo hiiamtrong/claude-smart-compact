@@ -6,6 +6,7 @@ htmlcov/
 .venv/
 venv/
 .claude/compact-memory/
+.claude/worktrees/
 .DS_Store
 
 # Python build artifacts
