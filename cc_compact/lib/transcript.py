@@ -21,6 +21,42 @@ _SLASH_ARGS_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# IDE/system envelope wrappers Claude Code injects into user turns. When
+# anchored at the start or end of a user's prompt they are telemetry rather
+# than intent, so strip them before the text is rendered as the Active Task.
+# Wrappers quoted mid-sentence ("what does <ide_opened_file> mean?") are
+# intentionally left alone.
+_ENVELOPE_WRAPPER_TAGS = (
+    "ide_opened_file",
+    "ide_selection",
+    "system-reminder",
+    "user-prompt-submit-hook",
+)
+_WRAPPER_BODY = (
+    r"<(?:" + "|".join(_ENVELOPE_WRAPPER_TAGS) + r")\b[^>]*>.*?</(?:"
+    + "|".join(_ENVELOPE_WRAPPER_TAGS) + r")>"
+)
+_LEADING_WRAPPERS_PATTERN = re.compile(
+    r"\A(?:\s*" + _WRAPPER_BODY + r")+", re.DOTALL,
+)
+_TRAILING_WRAPPERS_PATTERN = re.compile(
+    r"(?:" + _WRAPPER_BODY + r"\s*)+\Z", re.DOTALL,
+)
+
+
+def _strip_envelope_wrappers(text: str) -> str:
+    """Strip envelope wrapper blocks anchored at start/end of `text`.
+
+    If stripping leaves an empty string, returns the original text — we prefer
+    a slightly noisy Active Task over silently erasing the user's prompt.
+    """
+    if not text:
+        return text
+    stripped = _LEADING_WRAPPERS_PATTERN.sub("", text)
+    stripped = _TRAILING_WRAPPERS_PATTERN.sub("", stripped)
+    stripped = stripped.strip()
+    return stripped if stripped else text
+
 
 def _slash_command_args(content: str) -> Optional[str]:
     """If `content` is a slash-command user turn, return the args body.
@@ -38,14 +74,13 @@ def _slash_command_args(content: str) -> Optional[str]:
 def active_task_text(msg: "Message") -> str:
     """Return the human-readable 'active task' body for a user Message.
 
-    - For plain user text: returns msg.content unchanged.
-    - For a slash-command with args: returns the args body only.
+    - For plain user text: returns msg.content with envelope wrappers stripped.
+    - For a slash-command with args: returns the args body (wrappers stripped).
     - For a slash-command with empty args: returns '' (caller handles placeholder).
     """
     args = _slash_command_args(msg.content)
-    if args is None:
-        return msg.content
-    return args
+    body = msg.content if args is None else args
+    return _strip_envelope_wrappers(body)
 
 
 @dataclass
@@ -145,7 +180,8 @@ _LOCAL_COMMAND_MARKERS = (
 
 def _is_cli_injected_message(msg: "Message") -> bool:
     """True if this 'user' message is actually CLI-injected metadata
-    (tool results, command stdout, caveats) rather than a real user prompt.
+    (tool results, command stdout, caveats, compact summary) rather than a
+    real user prompt.
     """
     raw = msg.raw
     # Signal 1: top-level toolUseResult key
@@ -159,6 +195,11 @@ def _is_cli_injected_message(msg: "Message") -> bool:
     text = msg.content or ""
     stripped = text.lstrip()
     if any(stripped.startswith(marker) for marker in _LOCAL_COMMAND_MARKERS):
+        return True
+    # Signal 4: Claude Code's post-compact continuation record. After /compact,
+    # the CLI injects a "user" turn containing the prior-conversation summary
+    # with isCompactSummary: true. It is not a user prompt.
+    if isinstance(raw, dict) and raw.get("isCompactSummary") is True:
         return True
     return False
 

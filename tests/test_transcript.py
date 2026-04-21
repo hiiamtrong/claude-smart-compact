@@ -418,6 +418,161 @@ def test_is_skippable_user_turn_on_plain_user_text():
     assert transcript.is_skippable_user_turn(msg) is False
 
 
+def test_active_task_text_strips_ide_opened_file_wrapper():
+    """IDE injects <ide_opened_file>...</ide_opened_file> into user turns; the
+    user's actual prompt is what remains after stripping the wrapper."""
+    content = (
+        "<ide_opened_file>The user opened /path/to/settings.json in the IDE."
+        " This may or may not be related to the current task.</ide_opened_file>"
+        "MCP tools (deferred) là gì"
+    )
+    msg = transcript.Message(role="user", content=content, raw={}, index=0)
+    assert transcript.active_task_text(msg) == "MCP tools (deferred) là gì"
+
+
+def test_active_task_text_strips_ide_selection_wrapper():
+    content = (
+        "<ide_selection>The user selected lines 10 to 20 from /foo.py:"
+        "\n    def foo():\n        pass\n</ide_selection>\n"
+        "Dịch đoạn code này"
+    )
+    msg = transcript.Message(role="user", content=content, raw={}, index=0)
+    assert transcript.active_task_text(msg) == "Dịch đoạn code này"
+
+
+def test_active_task_text_strips_system_reminder_wrapper():
+    content = (
+        "<system-reminder>\nThe TodoWrite tool hasn't been used recently. ...\n"
+        "</system-reminder>\n"
+        "Check lại file settings"
+    )
+    msg = transcript.Message(role="user", content=content, raw={}, index=0)
+    assert transcript.active_task_text(msg) == "Check lại file settings"
+
+
+def test_active_task_text_strips_multiple_wrappers():
+    content = (
+        "<ide_opened_file>foo.py</ide_opened_file>\n"
+        "<system-reminder>reminder text</system-reminder>\n"
+        "real user prompt"
+    )
+    msg = transcript.Message(role="user", content=content, raw={}, index=0)
+    assert transcript.active_task_text(msg) == "real user prompt"
+
+
+def test_active_task_text_falls_back_to_original_when_only_wrappers():
+    """If stripping wrappers leaves empty content, return the original so we
+    never silently lose a real user message to over-eager stripping."""
+    content = "<ide_opened_file>foo.py</ide_opened_file>"
+    msg = transcript.Message(role="user", content=content, raw={}, index=0)
+    assert transcript.active_task_text(msg) == content
+
+
+def test_active_task_text_preserves_slash_command_args_path():
+    """Slash-command handling (args extraction) must still take priority
+    over IDE wrapper stripping."""
+    msg = _custom_cmd_msg(0, "review", "<ide_opened_file>a.py</ide_opened_file>fix this")
+    # args extracted, then wrappers stripped inside the args
+    assert transcript.active_task_text(msg) == "fix this"
+
+
+def test_active_task_text_does_not_strip_wrapper_inside_quoted_discussion():
+    """If wrapper syntax appears mid-sentence as quoted text (not as a real
+    envelope at the start/end), leave it alone."""
+    content = "tôi muốn hỏi tag <ide_opened_file> nghĩa là gì"
+    msg = transcript.Message(role="user", content=content, raw={}, index=0)
+    assert transcript.active_task_text(msg) == content
+
+
+def test_find_last_user_skips_compact_summary_record():
+    """Claude Code injects a fake user turn after /compact with
+    isCompactSummary: true. This is not a real user prompt."""
+    summary_content = (
+        "This session is being continued from a previous conversation that"
+        " ran out of context. The summary below covers the earlier portion..."
+    )
+    msgs = [
+        transcript.Message(role="user", content="real task", raw={}, index=0),
+        transcript.Message(role="assistant", content="did it", raw={}, index=1),
+        transcript.Message(
+            role="user",
+            content=summary_content,
+            raw={
+                "type": "user",
+                "isCompactSummary": True,
+                "message": {"role": "user", "content": summary_content},
+            },
+            index=2,
+        ),
+    ]
+    assert transcript.find_last_user_index(msgs) == 0
+
+
+def test_is_skippable_user_turn_on_compact_summary():
+    """isCompactSummary record is skippable via the same predicate used by
+    find_last_user_index, so scan_transcript also ignores it."""
+    msg = transcript.Message(
+        role="user",
+        content="This session is being continued...",
+        raw={"isCompactSummary": True, "message": {"role": "user", "content": "..."}},
+        index=0,
+    )
+    assert transcript.is_skippable_user_turn(msg) is True
+
+
+# --- Layer 3b: in-flight bullet selection must skip decorative-only lines ---
+
+def test_render_in_flight_skips_decorative_separator_opener():
+    """If the first non-empty line is a visual separator (e.g. a long run of
+    ─, =, *), pick the first line that has actual words instead."""
+    from cc_compact.lib import core
+
+    msg = transcript.Message(
+        role="assistant",
+        content=(
+            "`★ Insight ─────────────────────────────────────`\n"
+            "Deferred tools là cơ chế tối ưu context\n"
+            "`─────────────────────────────────────────────────`"
+        ),
+        raw={},
+        index=0,
+    )
+    rendered = core._render_in_flight([msg])
+    # Must NOT be just the opener separator line
+    assert "Insight" not in rendered or "Deferred" in rendered, rendered
+    assert "Deferred tools" in rendered
+
+
+def test_render_in_flight_uses_first_line_when_it_has_words():
+    """Regular case: first non-empty line already has content, keep it."""
+    from cc_compact.lib import core
+
+    msg = transcript.Message(
+        role="assistant",
+        content="I'll read the file now.\nSecond line.",
+        raw={},
+        index=0,
+    )
+    rendered = core._render_in_flight([msg])
+    assert "I'll read the file now." in rendered
+
+
+def test_render_in_flight_falls_back_to_decorative_when_no_content_line():
+    """If every line is decorative, we still emit something rather than drop
+    the turn silently."""
+    from cc_compact.lib import core
+
+    msg = transcript.Message(
+        role="assistant",
+        content="─────────\n═════════",
+        raw={},
+        index=0,
+    )
+    rendered = core._render_in_flight([msg])
+    # Not empty; some bullet exists
+    assert rendered.strip() and rendered.strip() != "_(no in-flight turns)_"
+
+
 def test_scan_transcript_single_pass(copy_fixture):
     # Empty list: no user index, empty in_flight, no todos.
     empty = transcript.scan_transcript([])

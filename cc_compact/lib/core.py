@@ -1,6 +1,7 @@
 """Pure functions that compose Markdown / string outputs for the hooks."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -9,6 +10,25 @@ from .transcript import Message, TodoItem, is_skippable_user_turn
 MAX_BULLET_LEN = 120
 MAX_IN_FLIGHT = 30
 DEFAULT_PREFS_BODY = "_(none yet)_\n"
+
+# Decorative-line detection for in-flight bullet selection.
+# Two independent signals mark a line as decoration rather than content:
+#   1. No word characters at all (pure separator row).
+#   2. Contains a run of ≥ 5 separator characters (banners like
+#      "★ Insight ─────────" where the word is just a label for the banner).
+_WORD_CHAR_PATTERN = re.compile(r"[^\W_]", re.UNICODE)
+_SEPARATOR_RUN_PATTERN = re.compile(r"[─═━\-=*#·•]{5,}")
+
+
+def _is_decorative_only(line: str) -> bool:
+    """True if `line` is decorative: either has no word characters, or
+    contains a long run of separator characters marking it as a banner/rule.
+    """
+    if _WORD_CHAR_PATTERN.search(line) is None:
+        return True
+    if _SEPARATOR_RUN_PATTERN.search(line):
+        return True
+    return False
 
 # Priority order of input keys likely to summarize a tool call.
 # Works across built-in tools, MCP tools, and plugin tools that follow
@@ -69,8 +89,10 @@ def _render_in_flight(in_flight: list[Message]) -> str:
         # noise. Either way, skip — keep bullets focused on assistant activity.
         if msg.role == "user":
             continue
+        non_empty = [ln for ln in (msg.content or "").splitlines() if ln.strip()]
         first_line = next(
-            (ln for ln in (msg.content or "").splitlines() if ln.strip()), ""
+            (ln for ln in non_empty if not _is_decorative_only(ln)),
+            non_empty[0] if non_empty else "",
         )
         if first_line:
             bullets.append(f"- {_truncate(first_line, MAX_BULLET_LEN)}")
