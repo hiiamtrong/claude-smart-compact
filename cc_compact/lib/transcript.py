@@ -99,13 +99,20 @@ class TodoItem:
 
 
 def _flatten_content(raw_content) -> str:
-    """Flatten Claude Code content (string or list of blocks) into plain text."""
+    """Flatten Claude Code content (string or list of blocks) into plain text.
+
+    Image blocks are rendered as `[Image]` placeholders so callers know a visual
+    was attached without embedding base64 data into memory files.
+    """
     if isinstance(raw_content, str):
         return raw_content
     if isinstance(raw_content, list):
         parts: list[str] = []
         for block in raw_content:
             if isinstance(block, dict):
+                if block.get("type") == "image":
+                    parts.append("[Image]")
+                    continue
                 text = block.get("text") or block.get("content") or ""
                 if isinstance(text, str):
                     parts.append(text)

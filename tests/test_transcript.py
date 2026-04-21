@@ -573,6 +573,48 @@ def test_render_in_flight_falls_back_to_decorative_when_no_content_line():
     assert rendered.strip() and rendered.strip() != "_(no in-flight turns)_"
 
 
+def test_flatten_content_image_block_becomes_placeholder():
+    """Image blocks in content list must produce a [Image] placeholder so
+    memory files signal the presence of an image without embedding base64."""
+    raw_content = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "abc123"}},
+    ]
+    assert transcript._flatten_content(raw_content) == "[Image]"
+
+
+def test_flatten_content_mixed_text_and_image():
+    """When a message has both text and an image, both should appear in output."""
+    raw_content = [
+        {"type": "text", "text": "Check this screenshot"},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "abc"}},
+    ]
+    result = transcript._flatten_content(raw_content)
+    assert "Check this screenshot" in result
+    assert "[Image]" in result
+
+
+def test_parse_jsonl_with_image_block_shows_placeholder(tmp_path):
+    """parse_jsonl must surface [Image] in message.content when the transcript
+    contains an image block so active_task_text captures it."""
+    import json
+    record = {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hiện tại khi compact có ảnh chỉ show text"},
+                {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "xyz"}},
+            ],
+        },
+    }
+    p = tmp_path / "img.jsonl"
+    p.write_text(json.dumps(record) + "\n")
+    messages = transcript.parse_jsonl(str(p))
+    assert len(messages) == 1
+    assert "hiện tại khi compact" in messages[0].content
+    assert "[Image]" in messages[0].content
+
+
 def test_scan_transcript_single_pass(copy_fixture):
     # Empty list: no user index, empty in_flight, no todos.
     empty = transcript.scan_transcript([])
