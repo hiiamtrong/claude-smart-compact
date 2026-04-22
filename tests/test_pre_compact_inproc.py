@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from cc_compact import pre_compact
+from cc_compact.lib import memory
 
 
 def _set_stdin(monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
@@ -26,8 +27,8 @@ def test_main_writes_memory_and_traces(project_root, fixtures_dir, monkeypatch, 
     pre_compact.main(payload)
 
     assert json.loads(capsys.readouterr().out) == {}
-    mem = project_root / ".claude" / "compact-memory" / "sid-inproc.md"
-    assert mem.exists()
+    mem = memory.find_memory_path(project_root, "sid-inproc")
+    assert mem is not None
     body = mem.read_text()
     assert "## Active Task" in body
     assert "## Open Todos" in body
@@ -49,8 +50,7 @@ def test_main_skips_write_when_no_user_message(project_root, fixtures_dir, monke
     pre_compact.main(payload)
 
     assert json.loads(capsys.readouterr().out) == {}
-    mem = project_root / ".claude" / "compact-memory" / "sid-empty.md"
-    assert not mem.exists()
+    assert memory.find_memory_path(project_root, "sid-empty") is None
 
     trace = project_root / ".claude" / "compact-memory" / "sid-empty.trace.jsonl"
     event = json.loads(trace.read_text().strip().splitlines()[0])
@@ -70,4 +70,4 @@ def test_main_via_run_hook_entry(project_root, fixtures_dir, monkeypatch, capsys
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     pre_compact.hook_runner.run_hook(pre_compact.main, "PreCompact")
     assert json.loads(capsys.readouterr().out) == {}
-    assert (project_root / ".claude/compact-memory/sid-hook.md").exists()
+    assert memory.find_memory_path(project_root, "sid-hook") is not None

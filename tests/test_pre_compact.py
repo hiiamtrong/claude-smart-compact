@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from cc_compact.lib import memory as mem_lib
+
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -32,8 +34,8 @@ def test_pre_compact_happy_path(project_root, fixtures_dir):
     # PreCompact stdout must be `{}` — Claude Code rejects any other shape.
     assert json.loads(result.stdout) == {}
 
-    mem = project_root / ".claude" / "compact-memory" / "sid-happy.md"
-    assert mem.exists()
+    mem = mem_lib.find_memory_path(project_root, "sid-happy")
+    assert mem is not None
     content = mem.read_text()
     assert "## Active Task" in content
     assert "refactor auth module" in content
@@ -58,14 +60,13 @@ def test_pre_compact_without_user_message_skips_write(project_root, fixtures_dir
     }
     result = _run_hook("pre_compact.py", payload, project_root)
     assert result.returncode == 0, result.stderr
-    mem = project_root / ".claude" / "compact-memory" / "sid-no-user.md"
-    assert not mem.exists()
+    assert mem_lib.find_memory_path(project_root, "sid-no-user") is None
 
 
 def test_pre_compact_preserves_preferences_on_second_run(project_root, fixtures_dir):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
-    (mem_dir / "sid-x.md").write_text(
+    (mem_dir / "2026-01-01T00-00-00Z_sid-x.md").write_text(
         "# Session Memory\n\n## Active Task\n> old\n\n"
         "## Open Todos\n_(none)_\n\n"
         "## Preferences\n- never mock DB\n"
@@ -78,8 +79,9 @@ def test_pre_compact_preserves_preferences_on_second_run(project_root, fixtures_
     }
     result = _run_hook("pre_compact.py", payload, project_root)
     assert result.returncode == 0, result.stderr
-    content = (mem_dir / "sid-x.md").read_text()
-    assert "never mock DB" in content
+    mem = mem_lib.find_memory_path(project_root, "sid-x")
+    assert mem is not None
+    assert "never mock DB" in mem.read_text()
 
 
 def test_pre_compact_invalid_stdin_fails_soft(project_root):
@@ -103,8 +105,7 @@ def test_pre_compact_missing_transcript_fails_soft(project_root):
     }
     result = _run_hook("pre_compact.py", payload, project_root)
     assert result.returncode == 0, result.stderr
-    # No memory file should be written.
-    assert not (project_root / ".claude" / "compact-memory" / "sid-missing.md").exists()
+    assert mem_lib.find_memory_path(project_root, "sid-missing") is None
 
 
 def test_pre_compact_on_real_cli_format(project_root, fixtures_dir):
@@ -122,8 +123,8 @@ def test_pre_compact_on_real_cli_format(project_root, fixtures_dir):
         input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
     )
     assert result.returncode == 0, result.stderr
-    mem = project_root / ".claude/compact-memory/real-cli.md"
-    assert mem.exists(), "memory file must be written for real CLI format"
+    mem = mem_lib.find_memory_path(project_root, "real-cli")
+    assert mem is not None, "memory file must be written for real CLI format"
     content = mem.read_text()
     assert "continue please" in content  # last user message
     assert "understand auth" in content  # in_progress todo
@@ -148,8 +149,8 @@ def test_pre_compact_skips_compact_slash_command(project_root, tmp_path):
         input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
     )
     assert result.returncode == 0, result.stderr
-    mem = project_root / ".claude/compact-memory/compact-skip.md"
-    assert mem.exists()
+    mem = mem_lib.find_memory_path(project_root, "compact-skip")
+    assert mem is not None
     content = mem.read_text()
     assert "refactor the service" in content
     # The blockquoted active task line must be "refactor the service", not the /compact command.
@@ -180,8 +181,8 @@ def test_pre_compact_extracts_args_from_slash_command(project_root, tmp_path):
         input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
     )
     assert result.returncode == 0, result.stderr
-    mem = project_root / ".claude/compact-memory/with-args.md"
-    assert mem.exists()
+    mem = mem_lib.find_memory_path(project_root, "with-args")
+    assert mem is not None
     content = mem.read_text()
     assert "@app/foo.py please fix null handling" in content
     # The XML wrapper should NOT appear in the Active Task blockquote line.
@@ -210,8 +211,8 @@ def test_pre_compact_skips_tool_result_user_messages(project_root, tmp_path):
         input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
     )
     assert result.returncode == 0, result.stderr
-    mem = project_root / ".claude/compact-memory/tool-result-test.md"
-    assert mem.exists()
+    mem = mem_lib.find_memory_path(project_root, "tool-result-test")
+    assert mem is not None
     content = mem.read_text()
     assert "run pre-commit" in content
     # Active Task blockquote must be the real user prompt, not the tool result content.
@@ -240,8 +241,8 @@ def test_pre_compact_skips_local_command_stdout_user_messages(project_root, tmp_
         input=json.dumps(payload), capture_output=True, text=True, cwd=project_root,
     )
     assert result.returncode == 0, result.stderr
-    mem = project_root / ".claude/compact-memory/local-cmd-test.md"
-    assert mem.exists()
+    mem = mem_lib.find_memory_path(project_root, "local-cmd-test")
+    assert mem is not None
     content = mem.read_text()
     # The real task should be the Active Task, not the injected stdout.
     # Check the blockquote line specifically.
@@ -294,7 +295,7 @@ def test_pre_compact_error_trace_has_session_id(project_root, fixtures_dir):
 def test_pre_compact_trace_records_preserved_preferences_flag(project_root, fixtures_dir):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
-    (mem_dir / "sid-p.md").write_text(
+    (mem_dir / "2026-01-01T00-00-00Z_sid-p.md").write_text(
         "## Preferences\n- keep me\n"
     )
     payload = {

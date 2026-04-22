@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from cc_compact.lib import memory as mem_lib
+
 REPO = Path(__file__).resolve().parent.parent
 
 # ~1M tokens ≈ 4MB of UTF-8 text (≈4 chars/token for English).
@@ -188,8 +190,8 @@ def test_compact_on_simulated_1m_token_session(project_root, tmp_path):
     assert json.loads(pre.stdout) == {}, "PreCompact stdout must be empty JSON"
     assert pre_elapsed < 30, f"PreCompact too slow on 4MB transcript: {pre_elapsed:.2f}s"
 
-    mem_file = project_root / ".claude" / "compact-memory" / f"{session_id}.md"
-    assert mem_file.exists(), "memory file must be written"
+    mem_file = mem_lib.find_memory_path(project_root, session_id)
+    assert mem_file is not None, "memory file must be written"
 
     md = mem_file.read_text(encoding="utf-8")
 
@@ -381,7 +383,6 @@ def test_compact_twice_in_same_session_persists_across_both_rounds(project_root,
     that cross-round state (preferences, trace ledger) accumulates correctly.
     """
     session_id = "two-compact-sim"
-    mem_file = project_root / ".claude" / "compact-memory" / f"{session_id}.md"
     trace_file = project_root / ".claude" / "compact-memory" / f"{session_id}.trace.jsonl"
 
     # --- Round 1: first compact ------------------------------------------
@@ -395,15 +396,15 @@ def test_compact_twice_in_same_session_persists_across_both_rounds(project_root,
         "trigger": "auto",
     }, project_root)
     assert r1_result.returncode == 0, r1_result.stderr
-    assert mem_file.exists()
+    mem_file_v1 = mem_lib.find_memory_path(project_root, session_id)
+    assert mem_file_v1 is not None
 
-    v1 = mem_file.read_text(encoding="utf-8")
+    v1 = mem_file_v1.read_text(encoding="utf-8")
     assert r1["active_task"] in v1
     assert "design idempotency key schema" in v1
     assert "wire key into charge endpoint" in v1
     assert "add integration tests" in v1
-    v1_size = mem_file.stat().st_size
-    assert v1_size < 100_000
+    assert mem_file_v1.stat().st_size < 100_000
 
     # --- Agent appends a preference between compacts ---------------------
     v1_with_pref = v1.replace(
@@ -411,7 +412,7 @@ def test_compact_twice_in_same_session_persists_across_both_rounds(project_root,
         "## Preferences\n- always run `pytest --cov` before commit\n"
         "- feature-flag any new middleware",
     )
-    mem_file.write_text(v1_with_pref, encoding="utf-8")
+    mem_file_v1.write_text(v1_with_pref, encoding="utf-8")
 
     # --- UserPromptSubmit fires on the first prompt post-compact ---------
     up = _run("user_prompt.py", {
@@ -435,7 +436,9 @@ def test_compact_twice_in_same_session_persists_across_both_rounds(project_root,
     }, project_root)
     assert r2_result.returncode == 0, r2_result.stderr
 
-    v2 = mem_file.read_text(encoding="utf-8")
+    mem_file_v2 = mem_lib.find_memory_path(project_root, session_id)
+    assert mem_file_v2 is not None
+    v2 = mem_file_v2.read_text(encoding="utf-8")
 
     # Active Task refreshed to the NEW prompt (old one is gone from snapshot fields).
     assert r2["new_active_task"] in v2
@@ -454,8 +457,8 @@ def test_compact_twice_in_same_session_persists_across_both_rounds(project_root,
     assert "feature-flag any new middleware" in v2
 
     # Memory size stays bounded across rounds (doesn't accumulate transcripts).
-    assert mem_file.stat().st_size < 100_000, (
-        f"memory file ballooned to {mem_file.stat().st_size} B across rounds"
+    assert mem_file_v2.stat().st_size < 100_000, (
+        f"memory file ballooned to {mem_file_v2.stat().st_size} B across rounds"
     )
 
     # --- Trace ledger accumulates all three hook runs --------------------
@@ -483,7 +486,7 @@ def test_compact_preserves_preferences_across_1m_session(project_root, tmp_path)
     session_id = "sim-1m-prefs"
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
-    (mem_dir / f"{session_id}.md").write_text(
+    (mem_dir / f"2026-01-01T00-00-00Z_{session_id}.md").write_text(
         "# Session Memory\n\n## Active Task\n> old\n\n"
         "## Open Todos\n_(none)_\n\n"
         "## Preferences\n- never run migrations on prod without approval\n"
@@ -499,7 +502,9 @@ def test_compact_preserves_preferences_across_1m_session(project_root, tmp_path)
     }, project_root)
     assert result.returncode == 0, result.stderr
 
-    md = (mem_dir / f"{session_id}.md").read_text(encoding="utf-8")
+    mem = mem_lib.find_memory_path(project_root, session_id)
+    assert mem is not None
+    md = mem.read_text(encoding="utf-8")
     assert "never run migrations on prod without approval" in md
     assert "prefer pytest over unittest" in md
     # Active Task was refreshed from the new transcript.

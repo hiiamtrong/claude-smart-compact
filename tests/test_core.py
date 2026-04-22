@@ -122,9 +122,9 @@ def test_compose_preserves_existing_preferences():
     assert "_(none yet)_" not in tail
 
 
-def test_prompt_pointer_has_session_id_and_size():
-    text = core.prompt_pointer_text("abc-123", 2048)
-    assert "abc-123" in text
+def test_prompt_pointer_has_filename_and_size():
+    text = core.prompt_pointer_text("2026-04-22T10-30-45Z_abc-123.md", 2048)
+    assert "2026-04-22T10-30-45Z_abc-123.md" in text
     assert "compact-memory" in text
     assert "KB" in text or "bytes" in text
     assert "## Preferences" in text

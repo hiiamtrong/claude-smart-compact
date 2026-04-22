@@ -33,7 +33,7 @@ def test_user_prompt_noop_when_no_memory(project_root):
 def test_user_prompt_injects_pointer_when_memory_exists(project_root):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
-    (mem_dir / "sid-1.md").write_text("# Session Memory\n\nbody " * 200)
+    (mem_dir / "2026-01-01T00-00-00Z_sid-1.md").write_text("# Session Memory\n\nbody " * 200)
 
     payload = {
         "session_id": "sid-1",
@@ -52,7 +52,7 @@ def test_user_prompt_injects_pointer_when_memory_exists(project_root):
 def test_user_prompt_trace_records_pointer_injected(project_root):
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
-    (mem_dir / "sid-2.md").write_text("x")
+    (mem_dir / "2026-01-01T00-00-00Z_sid-2.md").write_text("x")
     payload = {
         "session_id": "sid-2",
         "hook_event_name": "UserPromptSubmit",
@@ -91,7 +91,7 @@ def test_user_prompt_error_trace_has_session_id(project_root):
         "from lib import memory\n"
         "def _boom(*a, **kw):\n"
         "    raise RuntimeError('boom after parse')\n"
-        "memory.memory_path = _boom\n"
+        "memory.find_memory_path = _boom\n"
         f"runpy.run_path({str(hook)!r}, run_name='__main__')\n"
     )
     payload = {

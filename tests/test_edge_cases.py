@@ -32,7 +32,7 @@ def test_e1_missing_transcript(project_root):
     }
     result = _run("pre_compact.py", payload, project_root)
     assert result.returncode == 0
-    assert not (project_root / ".claude/compact-memory/e1.md").exists()
+    assert memory.find_memory_path(project_root, "e1") is None
 
 
 # E2: Corrupt JSONL line
@@ -51,7 +51,7 @@ def test_e3_no_user_message_no_memory_written(project_root, fixtures_dir):
         "trigger": "auto",
     }
     _run("pre_compact.py", payload, project_root)
-    assert not (project_root / ".claude/compact-memory/e3.md").exists()
+    assert memory.find_memory_path(project_root, "e3") is None
 
 
 # E4: No TodoWrite in transcript
@@ -63,15 +63,16 @@ def test_e4_no_todowrite_renders_none(project_root, fixtures_dir):
         "trigger": "auto",
     }
     _run("pre_compact.py", payload, project_root)
-    content = (project_root / ".claude/compact-memory/e4.md").read_text()
-    assert "_(none)_" in content
+    mem = memory.find_memory_path(project_root, "e4")
+    assert mem is not None
+    assert "_(none)_" in mem.read_text()
 
 
 # E5: Memory file exists without ## Preferences
 def test_e5_memory_without_prefs_gets_placeholder(project_root, fixtures_dir):
-    mem = project_root / ".claude/compact-memory/e5.md"
-    mem.parent.mkdir(parents=True, exist_ok=True)
-    mem.write_text("# Session Memory\n\n## Active Task\n> old\n")
+    mem_dir = project_root / ".claude/compact-memory"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    (mem_dir / "2026-01-01T00-00-00Z_e5.md").write_text("# Session Memory\n\n## Active Task\n> old\n")
     payload = {
         "session_id": "e5",
         "transcript_path": str(fixtures_dir / "transcript_single_turn.jsonl"),
@@ -79,15 +80,16 @@ def test_e5_memory_without_prefs_gets_placeholder(project_root, fixtures_dir):
         "trigger": "auto",
     }
     _run("pre_compact.py", payload, project_root)
-    content = mem.read_text()
-    assert "_(none yet)_" in content
+    mem = memory.find_memory_path(project_root, "e5")
+    assert mem is not None
+    assert "_(none yet)_" in mem.read_text()
 
 
 # E6: Memory file exists with ## Preferences populated
 def test_e6_memory_with_prefs_preserves_them(project_root, fixtures_dir):
-    mem = project_root / ".claude/compact-memory/e6.md"
-    mem.parent.mkdir(parents=True, exist_ok=True)
-    mem.write_text("## Preferences\n- keep this\n")
+    mem_dir = project_root / ".claude/compact-memory"
+    mem_dir.mkdir(parents=True, exist_ok=True)
+    (mem_dir / "2026-01-01T00-00-00Z_e6.md").write_text("## Preferences\n- keep this\n")
     payload = {
         "session_id": "e6",
         "transcript_path": str(fixtures_dir / "transcript_single_turn.jsonl"),
@@ -95,8 +97,9 @@ def test_e6_memory_with_prefs_preserves_them(project_root, fixtures_dir):
         "trigger": "auto",
     }
     _run("pre_compact.py", payload, project_root)
-    content = mem.read_text()
-    assert "keep this" in content
+    mem = memory.find_memory_path(project_root, "e6")
+    assert mem is not None
+    assert "keep this" in mem.read_text()
 
 
 # E7: compact-memory/ dir deleted mid-session
@@ -113,7 +116,7 @@ def test_e7_dir_recreated_on_next_pre_compact(project_root, fixtures_dir):
         p.unlink()
     d.rmdir()
     _run("pre_compact.py", payload, project_root)
-    assert (d / "e7.md").exists()
+    assert memory.find_memory_path(project_root, "e7") is not None
 
 
 # E8: Atomic write into a read-only directory fails soft
@@ -146,9 +149,8 @@ def test_e9_parallel_sessions_do_not_collide(project_root, fixtures_dir):
             "trigger": "auto",
         }
         _run("pre_compact.py", payload, project_root)
-    d = project_root / ".claude/compact-memory"
-    assert (d / "e9-a.md").exists()
-    assert (d / "e9-b.md").exists()
+    assert memory.find_memory_path(project_root, "e9-a") is not None
+    assert memory.find_memory_path(project_root, "e9-b") is not None
 
 
 # E10: Large transcript streams without loading everything
@@ -166,7 +168,7 @@ def test_e10_large_transcript(project_root, tmp_path, fixtures_dir):
     }
     result = _run("pre_compact.py", payload, project_root)
     assert result.returncode == 0
-    assert (project_root / ".claude/compact-memory/e10.md").exists()
+    assert memory.find_memory_path(project_root, "e10") is not None
 
 
 # E11: Hook runs fast (< 500ms) on a moderate transcript
@@ -194,7 +196,7 @@ def test_e12_no_claude_dir(tmp_path, fixtures_dir):
     }
     result = _run("pre_compact.py", payload, tmp_path)
     assert result.returncode == 0
-    assert (tmp_path / ".claude/compact-memory/e12.md").exists()
+    assert memory.find_memory_path(tmp_path, "e12") is not None
 
 
 # E13: Invalid stdin JSON
@@ -212,7 +214,6 @@ def test_e13_invalid_stdin(project_root):
 
 # E14: Two compactions in one session preserve preferences
 def test_e14_two_compactions_preserve_prefs(project_root, fixtures_dir):
-    mem = project_root / ".claude/compact-memory/e14.md"
     payload = {
         "session_id": "e14",
         "transcript_path": str(fixtures_dir / "transcript_with_todos.jsonl"),
@@ -220,16 +221,16 @@ def test_e14_two_compactions_preserve_prefs(project_root, fixtures_dir):
         "trigger": "auto",
     }
     _run("pre_compact.py", payload, project_root)
-    # Simulate agent editing Preferences section.
-    original = mem.read_text()
-    updated = original.replace(
-        "## Preferences",
-        "## Preferences\n- always use pnpm",
-        1,
+    # Simulate agent editing Preferences section in the written file.
+    first_mem = memory.find_memory_path(project_root, "e14")
+    assert first_mem is not None
+    first_mem.write_text(
+        first_mem.read_text().replace("## Preferences", "## Preferences\n- always use pnpm", 1)
     )
-    mem.write_text(updated)
     _run("pre_compact.py", payload, project_root)
-    assert "always use pnpm" in mem.read_text()
+    second_mem = memory.find_memory_path(project_root, "e14")
+    assert second_mem is not None
+    assert "always use pnpm" in second_mem.read_text()
 
 
 # E15: Empty last user message
@@ -246,5 +247,6 @@ def test_e15_empty_user_message(tmp_path, project_root):
         "trigger": "auto",
     }
     _run("pre_compact.py", payload, project_root)
-    content = (project_root / ".claude/compact-memory/e15.md").read_text()
-    assert "_(no active prompt)_" in content
+    mem = memory.find_memory_path(project_root, "e15")
+    assert mem is not None
+    assert "_(no active prompt)_" in mem.read_text()

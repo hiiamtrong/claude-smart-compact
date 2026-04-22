@@ -49,7 +49,8 @@ def test_install_symlinked_hook_runs_end_to_end(tmp_path):
     assert result.returncode == 0, result.stderr
     # PreCompact stdout must be `{}`; the real proof of work is the memory file.
     assert json.loads(result.stdout) == {}
-    assert (tmp_path / ".claude/compact-memory/symlink-smoke.md").exists()
+    from cc_compact.lib import memory as mem_lib
+    assert mem_lib.find_memory_path(tmp_path, "symlink-smoke") is not None
 
 
 def test_install_symlink_without_force_skips_existing(tmp_path, capsys):

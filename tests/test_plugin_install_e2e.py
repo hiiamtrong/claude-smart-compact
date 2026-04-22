@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from cc_compact.lib import memory as mem_lib
+
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -133,15 +135,15 @@ def test_install_precompact_hook_writes_memory_under_user_project(user_project):
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {}
 
-    mem = user_project / ".claude/compact-memory/install-e2e.md"
-    assert mem.exists(), "memory.md should land under the user's project, not the plugin root"
+    mem = mem_lib.find_memory_path(user_project, "install-e2e")
+    assert mem is not None, "memory.md should land under the user's project, not the plugin root"
     content = mem.read_text()
     assert "## Active Task" in content
     assert "refactor auth module" in content
     assert "## Open Todos" in content
 
     # Plugin root must not have been polluted with compaction state.
-    assert not (REPO / ".claude/compact-memory/install-e2e.md").exists()
+    assert mem_lib.find_memory_path(REPO, "install-e2e") is None
 
 
 def test_install_user_prompt_hook_injects_pointer_when_memory_exists(user_project):
@@ -149,7 +151,7 @@ def test_install_user_prompt_hook_injects_pointer_when_memory_exists(user_projec
     UserPromptSubmit must inject a pointer via `additionalContext`."""
     mem_dir = user_project / ".claude/compact-memory"
     mem_dir.mkdir(parents=True)
-    (mem_dir / "install-e2e.md").write_text(
+    (mem_dir / "2026-01-01T00-00-00Z_install-e2e.md").write_text(
         "# Session Memory\n\n## Active Task\n> test prompt\n"
     )
 
@@ -223,4 +225,4 @@ def test_install_hooks_work_without_cc_compact_on_pythonpath(user_project):
         f"plugin hook failed with minimal env — is there a hidden "
         f"PYTHONPATH dependency?\nstderr: {result.stderr}"
     )
-    assert (user_project / ".claude/compact-memory/no-pythonpath.md").exists()
+    assert mem_lib.find_memory_path(user_project, "no-pythonpath") is not None

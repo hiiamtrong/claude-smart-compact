@@ -16,9 +16,9 @@ def main(payload: dict) -> None:
     session_id = payload["session_id"]
 
     root = memory.find_project_root(Path.cwd())
-    mem_file = memory.memory_path(root, session_id)
+    mem_file = memory.find_memory_path(root, session_id)
 
-    if not mem_file.exists():
+    if mem_file is None:
         json.dump({}, sys.stdout)
         return
 
@@ -31,7 +31,7 @@ def main(payload: dict) -> None:
     json.dump({
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
-            "additionalContext": core.prompt_pointer_text(session_id, size),
+            "additionalContext": core.prompt_pointer_text(mem_file.name, size),
         }
     }, sys.stdout)
 

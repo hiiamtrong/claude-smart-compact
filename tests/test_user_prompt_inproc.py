@@ -21,12 +21,14 @@ def test_main_injects_pointer_when_memory_exists(project_root, monkeypatch, caps
     monkeypatch.chdir(project_root)
     mem_dir = project_root / ".claude" / "compact-memory"
     mem_dir.mkdir(parents=True, exist_ok=True)
-    (mem_dir / "sid-1.md").write_text("x" * 1024)
+    mem_file = mem_dir / "2026-04-22T10-00-00Z_sid-1.md"
+    mem_file.write_text("x" * 1024)
 
     user_prompt.main({"session_id": "sid-1"})
     out = json.loads(capsys.readouterr().out)
     assert out["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
-    assert "sid-1" in out["hookSpecificOutput"]["additionalContext"]
+    ctx = out["hookSpecificOutput"]["additionalContext"]
+    assert "2026-04-22T10-00-00Z_sid-1.md" in ctx
 
     event = json.loads((mem_dir / "sid-1.trace.jsonl").read_text().strip())
     assert event["pointer_injected"] is True

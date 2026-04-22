@@ -37,8 +37,9 @@ def main(payload: dict) -> None:
     todos = [t for t in scan.todos if t.status in ("in_progress", "pending")]
     active_task_msg = transcript.active_task_text(messages[last_user_idx]) if messages else ""
 
+    existing_mem_file = memory.find_memory_path(root, session_id)
+    existing_prefs = memory.read_preferences_section(existing_mem_file) if existing_mem_file else None
     mem_file = memory.memory_path(root, session_id)
-    existing_prefs = memory.read_preferences_section(mem_file)
 
     md = core.compose_memory_markdown(
         session_id=session_id,

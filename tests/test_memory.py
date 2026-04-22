@@ -23,11 +23,44 @@ def test_memory_dir_is_created_on_first_access(project_root):
     assert d.is_dir()
 
 
-def test_memory_path_and_trace_path(project_root):
-    assert (
-        memory.memory_path(project_root, "sid-x")
-        == project_root / ".claude" / "compact-memory" / "sid-x.md"
-    )
+def test_memory_path_has_datetime_prefix(project_root):
+    path = memory.memory_path(project_root, "sid-x")
+    name = path.name
+    # Format: <YYYY-MM-DDTHH-MM-SSZ>_<session_id>.md
+    assert name.endswith("_sid-x.md")
+    prefix = name[: name.index("_sid-x.md")]
+    assert len(prefix) == len("2026-04-22T10-30-45Z")
+    assert prefix[4] == "-" and prefix[7] == "-" and prefix[10] == "T"
+
+
+def test_find_memory_path_returns_none_when_missing(project_root):
+    assert memory.find_memory_path(project_root, "no-such-sid") is None
+
+
+def test_find_memory_path_finds_new_format(project_root):
+    d = memory.memory_dir(project_root)
+    f = d / "2026-04-22T10-00-00Z_sid-y.md"
+    f.write_text("hello")
+    assert memory.find_memory_path(project_root, "sid-y") == f
+
+
+def test_find_memory_path_returns_latest_when_multiple(project_root):
+    d = memory.memory_dir(project_root)
+    old = d / "2026-04-22T09-00-00Z_sid-z.md"
+    new = d / "2026-04-22T10-00-00Z_sid-z.md"
+    old.write_text("old")
+    new.write_text("new")
+    assert memory.find_memory_path(project_root, "sid-z") == new
+
+
+def test_find_memory_path_falls_back_to_legacy(project_root):
+    d = memory.memory_dir(project_root)
+    legacy = d / "sid-legacy.md"
+    legacy.write_text("legacy")
+    assert memory.find_memory_path(project_root, "sid-legacy") == legacy
+
+
+def test_trace_path(project_root):
     assert (
         memory.trace_path(project_root, "sid-x")
         == project_root / ".claude" / "compact-memory" / "sid-x.trace.jsonl"

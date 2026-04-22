@@ -162,11 +162,11 @@ def compose_memory_markdown(
     )
 
 
-def prompt_pointer_text(session_id: str, memory_size_bytes: int) -> str:
+def prompt_pointer_text(mem_filename: str, memory_size_bytes: int) -> str:
     """Pointer injected via UserPromptSubmit `additionalContext`."""
     size_kb = max(1, round(memory_size_bytes / 1024))
     return (
-        f"Memory: `.claude/compact-memory/{session_id}.md` (~{size_kb}KB). "
+        f"Memory: `.claude/compact-memory/{mem_filename}` (~{size_kb}KB). "
         f"Read for prior task/todo/preference context. "
         f"Append preferences to `## Preferences` (Edit tool)."
     )

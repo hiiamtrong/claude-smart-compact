@@ -1,7 +1,11 @@
 """File-system helpers for the smart-compact memory store."""
 from __future__ import annotations
 
+import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 
 def find_project_root(start: Path) -> Path:
@@ -20,17 +24,33 @@ def memory_dir(project_root: Path) -> Path:
     return d
 
 
+def _memory_filename(session_id: str, ts: str) -> str:
+    """Return a sortable filename: <ts>_<session_id>.md (ts in compact ISO form)."""
+    return f"{ts}_{session_id}.md"
+
+
 def memory_path(project_root: Path, session_id: str) -> Path:
-    return memory_dir(project_root) / f"{session_id}.md"
+    """Return the path for a new memory file with a UTC timestamp prefix."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    return memory_dir(project_root) / _memory_filename(session_id, ts)
+
+
+def find_memory_path(project_root: Path, session_id: str) -> Optional[Path]:
+    """Find an existing memory file for session_id (any timestamp prefix or legacy name)."""
+    d = memory_dir(project_root)
+    # New format: <datetime>_<session_id>.md (sorted alphabetically = chronologically)
+    matches = sorted(d.glob(f"*_{session_id}.md"))
+    if matches:
+        return matches[-1]
+    # Legacy format: <session_id>.md
+    legacy = d / f"{session_id}.md"
+    if legacy.exists():
+        return legacy
+    return None
 
 
 def trace_path(project_root: Path, session_id: str) -> Path:
     return memory_dir(project_root) / f"{session_id}.trace.jsonl"
-
-
-import json
-import os
-from datetime import datetime, timezone
 
 
 def write_atomic(path: Path, content: str) -> None:
@@ -51,9 +71,6 @@ def append_trace(path: Path, event: dict) -> None:
     record = {"ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), **event}
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-
-from typing import Optional
 
 
 def read_preferences_section(path: Path) -> Optional[str]:
